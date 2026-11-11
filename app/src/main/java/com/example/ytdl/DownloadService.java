@@ -46,6 +46,8 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -340,6 +342,46 @@ public class DownloadService extends Service {
      * every paused task with it and left its partial files orphaned in cache forever. Pausing
      * overnight is precisely the case where the process won't survive.
      */
+    /**
+     * Decode records independently so one corrupt item cannot discard healthy downloads.
+     * Reserve IDs even for malformed records, protecting their partial cache files from
+     * being reused after recovery.
+     */
+    static final class RestoredQueue {
+        final List<Task> tasks;
+        final long nextId;
+
+        RestoredQueue(final List<Task> tasks, final long nextId) {
+            this.tasks = tasks;
+            this.nextId = nextId;
+        }
+    }
+
+    static RestoredQueue decodeQueue(final JSONArray array) {
+        final List<Task> restored = new ArrayList<>();
+        final Set<Long> seen = new HashSet<>();
+        long highestId = 0;
+        for (int i = 0; i < array.length(); i++) {
+            try {
+                final JSONObject record = array.getJSONObject(i);
+                final long id = record.getLong("id");
+                if (id <= 0 || id == Long.MAX_VALUE) {
+                    throw new JSONException("Invalid task ID");
+                }
+                highestId = Math.max(highestId, id);
+                final Task task = Task.fromJson(record);
+                if (!seen.add(id)) {
+                    throw new JSONException("Duplicate task ID");
+                }
+                restored.add(task);
+            } catch (final Exception e) {
+                android.util.Log.w("DownloadService",
+                        "Skipping invalid queue item " + i, e);
+            }
+        }
+        return new RestoredQueue(restored, highestId + 1);
+    }
+
     public static synchronized void ensureLoaded(final Context context) {
         if (loaded) {
             return;
@@ -350,16 +392,12 @@ public class DownloadService extends Service {
             try {
                 final String contents = new QueueFileStore(
                         new File(context.getFilesDir(), QUEUE_FILE)).read();
-                final JSONArray array = new JSONArray(contents);
-                long highest = 0;
-                for (int i = 0; i < array.length(); i++) {
-                    final Task task = Task.fromJson(array.getJSONObject(i));
-                    TASKS.add(task);
-                    highest = Math.max(highest, task.id);
+                final RestoredQueue restored = decodeQueue(new JSONArray(contents));
+                synchronized (TASKS) {
+                    TASKS.clear();
+                    TASKS.addAll(restored.tasks);
                 }
-                // Ids are the temp-file names, so a restored task colliding with a new one
-                // would have them fighting over the same partials.
-                NEXT_ID.set(highest + 1);
+                NEXT_ID.updateAndGet(current -> Math.max(current, restored.nextId));
             } catch (final java.io.FileNotFoundException missing) {
                 // First launch: no queue to restore.
                 return;
@@ -1107,28 +1145,42 @@ public class DownloadService extends Service {
     }
 
     private Uri publishAudio(final File source, final String displayName) throws IOException {
+        final ContentResolver resolver = getContentResolver();
         final ContentValues values = new ContentValues();
         values.put(MediaStore.Audio.Media.DISPLAY_NAME, displayName);
         values.put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg");
         values.put(MediaStore.Audio.Media.RELATIVE_PATH, "Music/YTDL");
         values.put(MediaStore.Audio.Media.IS_PENDING, 1);
-        final Uri uri = getContentResolver().insert(
-                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values);
+        final Uri uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values);
         if (uri == null) throw new IOException("Couldn't create MP3 in MediaStore");
-        try (InputStream in = new FileInputStream(source);
-             OutputStream out = getContentResolver().openOutputStream(uri)) {
-            if (out == null) throw new IOException("Couldn't open MP3 destination");
-            final byte[] buffer = new byte[64 * 1024];
-            int n;
-            while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+        try {
+            try (InputStream in = new FileInputStream(source);
+                 OutputStream out = resolver.openOutputStream(uri)) {
+                if (out == null) throw new IOException("Couldn't open MP3 destination");
+                final byte[] buffer = new byte[64 * 1024];
+                int n;
+                while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+            }
+            values.clear();
+            values.put(MediaStore.Audio.Media.IS_PENDING, 0);
+            if (resolver.update(uri, values, null, null) <= 0) {
+                throw new IOException("Couldn't finalize MP3 in MediaStore");
+            }
+            return uri;
         } catch (final Exception e) {
-            getContentResolver().delete(uri, null, null);
-            throw e instanceof IOException ? (IOException) e : new IOException(e);
+            rollbackPendingMedia(resolver, uri, e);
+            throw e instanceof IOException ? (IOException) e
+                    : new IOException("Couldn't save MP3 in MediaStore", e);
         }
-        values.clear();
-        values.put(MediaStore.Audio.Media.IS_PENDING, 0);
-        getContentResolver().update(uri, values, null, null);
-        return uri;
+    }
+
+    private static void rollbackPendingMedia(final ContentResolver resolver, final Uri uri,
+                                             final Exception error) {
+        try {
+            resolver.delete(uri, null, null);
+        } catch (final RuntimeException cleanupFailure) {
+            error.addSuppressed(cleanupFailure);
+        }
     }
 
     private static String q(final String value) {
@@ -1400,7 +1452,6 @@ public class DownloadService extends Service {
     /** IS_PENDING hides the file from the gallery until the copy is actually complete. */
     private Uri publish(final File source, final String displayName, final String mimeType)
             throws IOException {
-
         final ContentResolver resolver = getContentResolver();
         final ContentValues values = new ContentValues();
         values.put(MediaStore.Downloads.DISPLAY_NAME, displayName);
@@ -1408,25 +1459,27 @@ public class DownloadService extends Service {
         values.put(MediaStore.Downloads.IS_PENDING, 1);
 
         final Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-        if (uri == null) {
-            throw new IOException("MediaStore wouldn't accept the file");
-        }
-
-        try (InputStream in = new FileInputStream(source);
-             OutputStream out = resolver.openOutputStream(uri)) {
-            if (out == null) {
-                throw new IOException("couldn't open the destination for writing");
+        if (uri == null) throw new IOException("MediaStore wouldn't accept the file");
+        try {
+            try (InputStream in = new FileInputStream(source);
+                 OutputStream out = resolver.openOutputStream(uri)) {
+                if (out == null) {
+                    throw new IOException("couldn't open the destination for writing");
+                }
+                final byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = in.read(buffer)) > 0) out.write(buffer, 0, read);
             }
-            final byte[] buffer = new byte[64 * 1024];
-            int read;
-            while ((read = in.read(buffer)) > 0) {
-                out.write(buffer, 0, read);
+            values.clear();
+            values.put(MediaStore.Downloads.IS_PENDING, 0);
+            if (resolver.update(uri, values, null, null) <= 0) {
+                throw new IOException("Couldn't finalize download in MediaStore");
             }
+            return uri;
+        } catch (final Exception e) {
+            rollbackPendingMedia(resolver, uri, e);
+            throw e instanceof IOException ? (IOException) e
+                    : new IOException("Couldn't save download in MediaStore", e);
         }
-
-        values.clear();
-        values.put(MediaStore.Downloads.IS_PENDING, 0);
-        resolver.update(uri, values, null, null);
-        return uri;
     }
 }

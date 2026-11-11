@@ -166,7 +166,10 @@ public final class Net {
                                 progress.onProgress(written, reportedTotal);
                                 return;
                             }
-                            if (expectedTotal > 0 && written == expectedTotal) {
+                            // A conflicting server total must not be hidden by a
+                            // locally saved expected length.
+                            if (reportedTotal <= 0 && expectedTotal > 0
+                                    && written == expectedTotal) {
                                 progress.onProgress(written, expectedTotal);
                                 return;
                             }
@@ -184,31 +187,37 @@ public final class Net {
                             throw new IOException("HTTP " + code);
                         }
 
-                        // Once a partial exists, appending is only safe when the server
-                        // explicitly honors the requested offset with a matching 206 range.
-                        if (requestStart > 0) {
-                            if (code != 206) {
-                                throw new UnsafeResume("server ignored resume range at "
-                                        + requestStart + " bytes");
-                            }
+                        // Validate every 206 response, including the very first chunk.
+                        // A wrong first offset or a changed total would corrupt the file.
+                        if (requestStart > 0 && code != 206) {
+                            throw new UnsafeResume("server ignored resume range at "
+                                    + requestStart + " bytes");
+                        }
+                        long declaredRangeBytes = -1;
+                        if (code == 206) {
                             final String contentRange = response.header("Content-Range");
-                            final long contentRangeStart = contentRangeStart(contentRange);
-                            final long contentRangeEnd = contentRangeEnd(contentRange);
-                            final long contentRangeTotal = contentRangeTotal(contentRange);
+                            final long rangeStart = contentRangeStart(contentRange);
+                            final long rangeEnd = contentRangeEnd(contentRange);
+                            final long rangeTotal = contentRangeTotal(contentRange);
                             final long requestedEnd = requestStart + CHUNK_BYTES - 1;
-                            if (contentRangeStart != requestStart) {
-                                throw new UnsafeResume("resume range mismatch (requested "
-                                        + requestStart + ", got " + contentRangeStart + ")");
+                            if (rangeStart != requestStart) {
+                                throw new UnsafeResume((requestStart > 0 ? "resume " : "")
+                                        + "range mismatch (requested " + requestStart
+                                        + ", got " + rangeStart + ")");
                             }
-                            if (contentRangeEnd < contentRangeStart
-                                    || contentRangeEnd > requestedEnd) {
+                            if (rangeEnd < rangeStart || rangeEnd > requestedEnd) {
                                 throw new UnsafeResume("invalid Content-Range end "
-                                        + contentRangeEnd + " for requested end " + requestedEnd);
+                                        + rangeEnd + " for requested end " + requestedEnd);
                             }
-                            if (contentRangeTotal > 0 && contentRangeEnd >= contentRangeTotal) {
+                            if (rangeTotal <= 0 || rangeEnd >= rangeTotal) {
                                 throw new UnsafeResume("invalid Content-Range total "
-                                        + contentRangeTotal + " for end " + contentRangeEnd);
+                                        + rangeTotal + " for end " + rangeEnd);
                             }
+                            if (total > 0 && rangeTotal != total) {
+                                throw new UnsafeResume("stream length changed between chunks ("
+                                        + total + " -> " + rangeTotal + " bytes)");
+                            }
+                            declaredRangeBytes = rangeEnd - rangeStart + 1;
                         }
 
                         final ResponseBody body = response.body();
@@ -216,20 +225,11 @@ public final class Net {
                             throw new IOException("empty response body");
                         }
 
-                        if (code == 206) {
-                            final String contentRange = response.header("Content-Range");
-                            final long rangeStart = contentRangeStart(contentRange);
-                            final long rangeEnd = contentRangeEnd(contentRange);
-                            if (rangeStart >= 0 && rangeEnd >= rangeStart
-                                    && body.contentLength() >= 0) {
-                                final long declaredBytes = rangeEnd - rangeStart + 1;
-                                if (body.contentLength() != declaredBytes) {
-                                    throw new UnsafeResume("206 body length "
-                                            + body.contentLength()
-                                            + " does not match Content-Range length "
-                                            + declaredBytes);
-                                }
-                            }
+                        if (declaredRangeBytes >= 0 && body.contentLength() >= 0
+                                && body.contentLength() != declaredRangeBytes) {
+                            throw new UnsafeResume("206 body length " + body.contentLength()
+                                    + " does not match Content-Range length "
+                                    + declaredRangeBytes);
                         }
 
                         if (total < 0) {
@@ -244,8 +244,6 @@ public final class Net {
                             }
                         }
 
-                        final long requestedEnd = requestStart + CHUNK_BYTES - 1;
-                        final long maxChunkBytes = requestedEnd - requestStart + 1;
                         long responseBytes = 0;
                         try (InputStream in = body.byteStream()) {
                             final byte[] buffer = new byte[64 * 1024];
@@ -253,8 +251,9 @@ public final class Net {
                             while ((read = in.read(buffer)) > 0) {
                                 control.checkpoint();
                                 responseBytes += read;
-                                if (code == 206 && responseBytes > maxChunkBytes) {
-                                    throw new UnsafeResume("server returned more bytes than requested"
+                                if (declaredRangeBytes >= 0
+                                        && responseBytes > declaredRangeBytes) {
+                                    throw new UnsafeResume("server returned more bytes than declared"
                                             + " for range starting at " + requestStart);
                                 }
                                 out.write(buffer, 0, read);
@@ -263,8 +262,14 @@ public final class Net {
                             }
                         }
 
-                        // 200 rather than 206 means the server ignored Range and sent the lot.
+                        // Chunked replies may omit Content-Length. Check the actual
+                        // response byte count before accepting a partial chunk.
+                        if (declaredRangeBytes >= 0 && responseBytes != declaredRangeBytes) {
+                            throw new IOException("truncated 206 response (received "
+                                    + responseBytes + " of " + declaredRangeBytes + " bytes)");
+                        }
                         if (code == 200) {
+                            if (responseBytes == 0) throw new IOException("empty stream body");
                             return;
                         }
                         break;
