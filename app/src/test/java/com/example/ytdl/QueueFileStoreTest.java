@@ -10,6 +10,7 @@ import org.robolectric.annotation.Config;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import static org.junit.Assert.assertEquals;
 
 @RunWith(RobolectricTestRunner.class)
@@ -50,5 +51,20 @@ public class QueueFileStoreTest {
         unfinished.write("[2]".getBytes(StandardCharsets.UTF_8));
         atom.failWrite(unfinished);
         assertEquals("[1]", store.read());
+    }
+    @Test public void unreadableQueueIsPreservedWithoutOverwritingPriorRecovery()
+            throws Exception {
+        File source = new File(folder.getRoot(), "queue.json");
+        Files.write(source.toPath(), "[broken".getBytes(StandardCharsets.UTF_8));
+        File backupDir = folder.newFolder("private-recovery");
+        File first = QueueFileStore.preserveUnreadable(source, backupDir);
+        assertEquals("[broken", new String(Files.readAllBytes(first.toPath()),
+                StandardCharsets.UTF_8));
+        Files.write(source.toPath(), "{another failure".getBytes(StandardCharsets.UTF_8));
+        File second = QueueFileStore.preserveUnreadable(source, backupDir);
+        assertEquals("[broken", new String(Files.readAllBytes(first.toPath()),
+                StandardCharsets.UTF_8));
+        assertEquals("{another failure", new String(Files.readAllBytes(second.toPath()),
+                StandardCharsets.UTF_8));
     }
 }
