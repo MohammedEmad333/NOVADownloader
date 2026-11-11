@@ -8,6 +8,7 @@ import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowStatFs;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +28,9 @@ public class NetResumeTest {
     private final Net.Control control = () -> {};
 
     @Before public void setup() throws Exception {
+        // Robolectric reports zero free blocks unless filesystem stats are registered.
+        // Keep this isolated to tests; production's real storage guard is unchanged.
+        ShadowStatFs.registerStats(folder.getRoot(), 262144, 262144, 262144);
         server = new MockWebServer();
         server.start();
     }
