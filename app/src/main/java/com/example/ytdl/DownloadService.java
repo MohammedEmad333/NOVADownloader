@@ -1483,22 +1483,3 @@ public class DownloadService extends Service {
         }
     }
 }
-
-        try (InputStream in = new FileInputStream(source);
-             OutputStream out = resolver.openOutputStream(uri)) {
-            if (out == null) {
-                throw new IOException("couldn't open the destination for writing");
-            }
-            final byte[] buffer = new byte[64 * 1024];
-            int read;
-            while ((read = in.read(buffer)) > 0) {
-                out.write(buffer, 0, read);
-            }
-        }
-
-        values.clear();
-        values.put(MediaStore.Downloads.IS_PENDING, 0);
-        resolver.update(uri, values, null, null);
-        return uri;
-    }
-}
