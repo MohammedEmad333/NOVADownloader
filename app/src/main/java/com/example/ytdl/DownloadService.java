@@ -402,7 +402,15 @@ public class DownloadService extends Service {
                 // First launch: no queue to restore.
                 return;
             } catch (final Exception e) {
-                // Malformed queue data must not crash the app.
+                // Preserve the original bytes in noBackupFilesDir before a future save
+                // replaces queue.json. Do not silently erase evidence of corruption.
+                try {
+                    QueueFileStore.preserveUnreadable(
+                            new File(context.getFilesDir(), QUEUE_FILE),
+                            context.getNoBackupFilesDir());
+                } catch (final IOException copyError) {
+                    e.addSuppressed(copyError);
+                }
                 TASKS.clear();
                 android.util.Log.w("DownloadService", "Unable to restore queue", e);
             }
