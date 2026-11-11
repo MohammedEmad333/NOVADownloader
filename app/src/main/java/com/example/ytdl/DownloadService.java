@@ -43,9 +43,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -350,24 +347,10 @@ public class DownloadService extends Service {
         loaded = true;
 
         synchronized (IO_LOCK) {
-            final File file = new File(context.getFilesDir(), QUEUE_FILE);
-            if (!file.exists()) {
-                return;
-            }
             try {
-                final byte[] bytes = new byte[(int) file.length()];
-                try (InputStream in = new FileInputStream(file)) {
-                    int read = 0;
-                    while (read < bytes.length) {
-                        final int n = in.read(bytes, read, bytes.length - read);
-                        if (n < 0) {
-                            break;
-                        }
-                        read += n;
-                    }
-                }
-
-                final JSONArray array = new JSONArray(new String(bytes, StandardCharsets.UTF_8));
+                final String contents = new QueueFileStore(
+                        new File(context.getFilesDir(), QUEUE_FILE)).read();
+                final JSONArray array = new JSONArray(contents);
                 long highest = 0;
                 for (int i = 0; i < array.length(); i++) {
                     final Task task = Task.fromJson(array.getJSONObject(i));
@@ -377,9 +360,13 @@ public class DownloadService extends Service {
                 // Ids are the temp-file names, so a restored task colliding with a new one
                 // would have them fighting over the same partials.
                 NEXT_ID.set(highest + 1);
+            } catch (final java.io.FileNotFoundException missing) {
+                // First launch: no queue to restore.
+                return;
             } catch (final Exception e) {
-                // A corrupt queue file shouldn't brick the app. Losing it costs the queue.
+                // Malformed queue data must not crash the app.
                 TASKS.clear();
+                android.util.Log.w("DownloadService", "Unable to restore queue", e);
             }
         }
     }
@@ -391,13 +378,11 @@ public class DownloadService extends Service {
                 for (final Task task : snapshot()) {
                     array.put(task.toJson());
                 }
-                final File file = new File(context.getFilesDir(), QUEUE_FILE);
-                try (Writer writer = new OutputStreamWriter(
-                        new FileOutputStream(file), StandardCharsets.UTF_8)) {
-                    writer.write(array.toString());
-                }
-            } catch (final Exception ignored) {
-                // Best-effort. A failed write costs the queue on next launch, not this run.
+                new QueueFileStore(new File(context.getFilesDir(), QUEUE_FILE))
+                        .write(array.toString());
+            } catch (final Exception e) {
+                // The last committed queue remains readable if a write fails.
+                android.util.Log.w("DownloadService", "Unable to save queue", e);
             }
         }
     }
