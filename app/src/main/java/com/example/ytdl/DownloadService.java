@@ -658,8 +658,9 @@ public class DownloadService extends Service {
     public void onCreate() {
         super.onCreate();
         ensureLoaded(this);
-        PAUSE_AFTER_CURRENT.set(getSharedPreferences(PREFS, MODE_PRIVATE)
-                .getBoolean(PREF_PAUSE_AFTER_CURRENT, false));
+        // After process death the previously active task restores as PAUSED. Do not
+        // silently start a different queued task if pause-after-current was armed.
+        restorePauseAfterCurrent(this);
         final ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         if (cm != null) {
             networkCallback = new ConnectivityManager.NetworkCallback() {
@@ -756,13 +757,29 @@ public class DownloadService extends Service {
     }
 
     private void pauseQueuedTasks() {
+        pauseQueuedTasks(this);
+    }
+
+    private static void pauseQueuedTasks(final Context context) {
         for (final Task task : snapshot()) {
             if (task.state == State.QUEUED) {
                 task.pauseRequested = true;
                 task.state = State.PAUSED;
             }
         }
-        save(this);
+        save(context);
+    }
+
+    static boolean restorePauseAfterCurrent(final Context context) {
+        final boolean armed = context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(PREF_PAUSE_AFTER_CURRENT, false);
+        PAUSE_AFTER_CURRENT.set(false);
+        if (!armed) return false;
+        // Consume the one-shot request before starting the service worker.
+        context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit().putBoolean(PREF_PAUSE_AFTER_CURRENT, false).commit();
+        pauseQueuedTasks(context);
+        return true;
     }
 
     private Task nextQueued() {
