@@ -75,6 +75,7 @@ public class MainActivity extends Activity {
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean fetchInProgress = new AtomicBoolean(false);
+    private final SearchLoadGate searchLoadGate = new SearchLoadGate();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Option> options = new ArrayList<>();
     private final List<AudioStream> audioTracks = new ArrayList<>();
@@ -606,6 +607,9 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Already fetching", Toast.LENGTH_SHORT).show();
             return;
         }
+        final int generation = searchLoadGate.reset();
+        final int selectedSource = searchSourceSpinner == null ? 0
+                : searchSourceSpinner.getSelectedItemPosition();
         resetFetch();
         setFetchBusy(true);
         status.setText("Fetching…");
@@ -617,6 +621,7 @@ public class MainActivity extends Activity {
                         final Spotify.Match match = matches.get(0);
                         final StreamInfo info = StreamInfo.getInfo(ServiceList.YouTube, match.youtubeUrl);
                         main.post(() -> {
+                            if (!searchLoadGate.isCurrent(generation)) return;
                             pageUrl = match.youtubeUrl;
                             showMedia(info, "Spotify → YouTube", match.spotifyTitle,
                                     match.artist, match.coverUrl);
@@ -627,15 +632,17 @@ public class MainActivity extends Activity {
                             entries.add(new Entry(match.youtubeUrl, Streams.sanitize(match.spotifyTitle),
                                     match.artist, match.coverUrl));
                         }
-                        main.post(() -> showCollection("Spotify collection", entries, true));
+                        main.post(() -> {
+                            if (searchLoadGate.isCurrent(generation))
+                                showCollection("Spotify collection", entries, true);
+                        });
                     }
                     return;
                 }
 
                 if (!looksLikeUrl(input)) {
                     rememberSearch(input);
-                    final int source = searchSourceSpinner == null ? 0
-                            : searchSourceSpinner.getSelectedItemPosition();
+                    final int source = selectedSource;
                     youtubeSearchSession = null;
                     soundCloudSearchSession = null;
                     searchResults.clear();
@@ -652,23 +659,35 @@ public class MainActivity extends Activity {
                         }
                     }
                     final List<MediaSearch.Result> snapshot = new ArrayList<>(searchResults);
-                    main.post(() -> showSearch(snapshot));
+                    main.post(() -> {
+                        if (searchLoadGate.isCurrent(generation)) showSearch(snapshot);
+                    });
                     return;
                 }
 
                 final StreamingService service = serviceFor(input);
                 if (service == ServiceList.YouTube && linkType(service, input) == StreamingService.LinkType.PLAYLIST) {
-                    fetchPlaylist(input);
+                    fetchPlaylist(input, generation);
                     return;
                 }
                 final StreamInfo info = StreamInfo.getInfo(service, input);
-                main.post(() -> { pageUrl = input; showMedia(info,
-                        service == ServiceList.SoundCloud ? "SoundCloud" : "YouTube"); });
+                main.post(() -> {
+                    if (!searchLoadGate.isCurrent(generation)) return;
+                    pageUrl = input;
+                    showMedia(info, service == ServiceList.SoundCloud ? "SoundCloud" : "YouTube");
+                });
             } catch (final Exception e) {
-                main.post(() -> status.setText("Couldn't read that input: " + safeMessage(e)));
+                main.post(() -> {
+                    if (searchLoadGate.isCurrent(generation))
+                        status.setText("Couldn't read that input: " + safeMessage(e));
+                });
             } finally {
-                fetchInProgress.set(false);
-                main.post(() -> setFetchBusy(false));
+                main.post(() -> {
+                    if (searchLoadGate.isCurrent(generation)) {
+                        fetchInProgress.set(false);
+                        setFetchBusy(false);
+                    }
+                });
             }
         });
     }
@@ -719,7 +738,7 @@ public class MainActivity extends Activity {
         catch (final Exception e) { return StreamingService.LinkType.NONE; }
     }
 
-    private void fetchPlaylist(final String url) throws Exception {
+    private void fetchPlaylist(final String url, final int generation) throws Exception {
         final PlaylistInfo info = PlaylistInfo.getInfo(ServiceList.YouTube, url);
         final List<Entry> entries = new ArrayList<>();
         for (final StreamInfoItem item : info.getRelatedItems()) {
@@ -735,7 +754,10 @@ public class MainActivity extends Activity {
             }
             next = more.getNextPage();
         }
-        main.post(() -> showCollection(info.getName(), entries, false));
+        main.post(() -> {
+            if (searchLoadGate.isCurrent(generation))
+                showCollection(info.getName(), entries, false);
+        });
     }
 
     private void showSearch(final List<MediaSearch.Result> results) {
@@ -804,21 +826,29 @@ public class MainActivity extends Activity {
     }
 
     private void loadMoreSearch() {
+        // Ignore repeat taps and invalidate queued results when a fresh fetch starts.
+        if (!searchLoadGate.tryBeginMore()) return;
+        final int generation = searchLoadGate.current();
+        final MediaSearch.Session youtube = youtubeSearchSession;
+        final MediaSearch.Session soundCloud = soundCloudSearchSession;
         status.setText("Loading more…");
         executor.execute(() -> {
             try {
                 final List<MediaSearch.Result> more = new ArrayList<>();
-                if (youtubeSearchSession != null && youtubeSearchSession.hasMore()) {
-                    more.addAll(youtubeSearchSession.next());
-                }
-                if (soundCloudSearchSession != null && soundCloudSearchSession.hasMore()) {
-                    more.addAll(soundCloudSearchSession.next());
-                }
-                appendUniqueSearchResults(searchResults, more);
-                final List<MediaSearch.Result> snapshot = new ArrayList<>(searchResults);
-                main.post(() -> showSearch(snapshot));
+                if (youtube != null && youtube.hasMore()) more.addAll(youtube.next());
+                if (soundCloud != null && soundCloud.hasMore()) more.addAll(soundCloud.next());
+                main.post(() -> {
+                    if (!searchLoadGate.isCurrent(generation)) return;
+                    searchLoadGate.finishMore(generation);
+                    appendUniqueSearchResults(searchResults, more);
+                    showSearch(new ArrayList<>(searchResults));
+                });
             } catch (final Exception e) {
-                main.post(() -> status.setText("Couldn't load more: " + safeMessage(e)));
+                main.post(() -> {
+                    if (!searchLoadGate.isCurrent(generation)) return;
+                    searchLoadGate.finishMore(generation);
+                    status.setText("Couldn't load more: " + safeMessage(e));
+                });
             }
         });
     }
