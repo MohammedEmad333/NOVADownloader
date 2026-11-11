@@ -10,6 +10,8 @@
     <application
         android:name=".DownloaderApp"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="Media Downloader"
         android:supportsRtl="true"

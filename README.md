@@ -31,6 +31,16 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 Every push to the default branch triggers a fresh build. You can also start one by hand
 from the Actions tab via **Run workflow**.
 
+## Tests and queue recovery
+
+GitHub Actions runs local unit tests before building the debug APK. Tests
+exercise atomic queue replacement and HTTP range/resume validation.
+
+The queue is written with Android AtomicFile; a failed or interrupted save
+should retain the last complete snapshot. Android backup and device-transfer
+rules exclude queue.json, which contains short-lived signed media URLs and
+refers to partial files not available after transfer.
+
 ## Why it's shaped this way
 
 No `gradlew`, no `gradle-wrapper.jar`, no launcher icons, no `strings.xml`, no layout XML.
@@ -65,9 +75,8 @@ a 150MB 1080p60 file doesn't and it stutters.
 
 The merge uses `MediaMuxer`, which is part of the Android framework. It's a remux, not a
 re-encode: the compressed H.264 and AAC samples are copied into a new MP4 container
-untouched. Takes a second or two and loses nothing. This is why there's no ffmpeg
-dependency — FFmpegKit was retired in 2025 and pulled from the repos, but transcoding was
-never actually needed for this.
+untouched. Takes a second or two and loses nothing. Video remuxing needs no FFmpeg, but a maintained FFmpegKit fork is now
+included for MP3 encoding and subtitle conversion.
 
 Only MPEG-4 video is offered for merging. YouTube also serves WebM/VP9 at the same
 resolutions, but pairing VP9 with AAC needs a WebM muxer and a different audio choice —
@@ -75,13 +84,9 @@ two containers to reason about instead of one, for no visible difference.
 
 ## Read this before you're disappointed by the output
 
-**Some videos show only the muxed 360p** while others on the same build offer 1080p60. When
-that happens the status line prints a diagnostic instead of the audio picker, reading
-`usable/sent`. It exists because there are two causes with opposite fixes and no way to tell
-them apart by looking: either YouTube sent no adaptive formats — the poToken wall, which
-rolls out per video — or it sent them and `Streams` filtered them out, most likely because
-they're delivered as DASH manifests rather than progressive HTTP. `sent` being 0 means it
-isn't this app's doing. `sent` healthy with `usable` at 0 means it is.
+**Some sources expose only low-resolution formats.** This may result from
+extractor or source changes, or from formats the app does not support.
+The Streams diagnostic helper is not currently shown in the UI.
 
 **Some videos will fail** with "Sign in to confirm you're not a bot." That's YouTube's
 integrity check. poTokens are the workaround — the extractor accepts them but doesn't
@@ -107,38 +112,15 @@ A paused task re-runs from the top when resumed. An already-complete stage costs
 that returns 416, which `fetchToFile` reads as "already have it all" — so the video stage
 skips itself and the audio stage picks up where it stopped.
 
-The limit worth knowing: YouTube's stream URLs expire after a few hours. Pause overnight and
-resume will fail with a 403, because the URL is stale rather than the file being wrong.
-Re-fetch the video and queue it again.
+Stream URLs can expire. On a stale URL error the service tries to refresh
+the stream URL and continue; extraction may still fail.
 
-## The poToken wall, and the token-server pointer
+## Current format limits
 
-Some videos return only a muxed 360p stream: `0/0` in the diagnostic, no manifests. That's
-YouTube gating the adaptive formats behind a poToken — an integrity token minted by running
-its BotGuard challenge, which the phone can't safely do. The reference tools (NewPipe, yt-dlp)
-hit the same wall for the same reason; it isn't this app's filters.
-
-The practical escape is bgutil running as a local server in Termux — it runs the challenge and
-mints tokens. So when a fetch comes back `0/0`, the app checks whether that server is answering
-on `127.0.0.1:4416` and tailors the diagnostic: if it's up, it points you at `ytdl <url>`; if
-not, it tells you to start it. The probe only runs when formats are actually missing, so a
-healthy fetch never pays for a localhost call.
-
-When the server is up, the app goes further than pointing: on `0/0` it mints a token from
-bgutil and **re-extracts with it**, so the higher qualities appear in the app directly. The
-token must be set before extraction, so this is a second fetch with the provider active, not
-a patch of the first result. `PoToken.Provider` implements the extractor's `PoTokenProvider`
-interface, mints once per video (cached across the three client callbacks), and is torn down
-after each attempt — a video-bound token is useless for the next video, and stale reuse is
-what produces 403s.
-
-The honest caveats stand: this leans on two experimental pieces (NewPipeExtractor's
-pre-release poToken support and bgutil), so it needs occasional care when YouTube shifts
-BotGuard. And there's one unsettled detail baked into a single line of `PoToken.Provider`:
-both poToken slots get the same content-bound token. If YouTube ever demands a separate
-visitor-bound token for the streaming URLs, the streaming URLs would 403 while extraction
-succeeds — and that one line is where the fix goes. When the server isn't running, none of
-this fires and the app behaves exactly as before.
+Some media sources expose only a limited set of qualities. The current app
+does **not** automatically inject poTokens: the PoToken helper is not wired
+into extraction. Streams.diagnostics is also not displayed in the current UI.
+The available formats depend on the source and extractor version.
 
 ## Why a Task is a page URL and not two URLs
 
@@ -227,8 +209,8 @@ download arrow hitting a floor the other.
 - MPEG-4 with a muxable codec for merging. AV1 is offered only on Android 12+, since
   MediaMuxer couldn't put it in an MP4 before that. No WebM/VP9, no HLS, no live streams.
 - Playlists are capped at 200 items — each page is another round trip.
-- Subtitles come out as TTML, not SRT. That's what YouTube's default format is through this
-  API; getting VTT or SRT means asking the extractor directly rather than via StreamInfo.
+- Supported subtitle inputs are converted to SRT through the maintained FFmpegKit
+  dependency. Availability depends on the source.
 - A task killed during SAVING leaves a pending MediaStore row behind. It's invisible and the
   system reaps it after a week.
 - One task at a time.
