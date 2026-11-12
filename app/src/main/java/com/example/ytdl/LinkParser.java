@@ -41,7 +41,7 @@ final class LinkParser {
 
     private static boolean isSupportedMediaLink(final String value) {
         if (!(value.startsWith("http://") || value.startsWith("https://"))) return false;
-        if (Spotify.isSpotifyUrl(value)) return true;
+        if (Spotify.isSpotifyUrl(value) || TwitterVideo.isPostUrl(value)) return true;
         try {
             if (ServiceList.YouTube.getLinkTypeByUrl(value) != StreamingService.LinkType.NONE) {
                 return true;

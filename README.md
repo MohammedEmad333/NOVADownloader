@@ -116,6 +116,24 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   between MediaStore insertion and recording its URI; manual inspection is still
   required on real Android devices.
 
+## NOVA 1.5: public X / Twitter post videos
+
+- Paste an **X.com or Twitter.com public post link**, or share one into NOVA
+  through Android. The Explore screen shows the attached MP4 video(s), lets you
+  choose a clip, and queues it with the standard pause/resume manager.
+- Supports public post video and GIF-as-MP4 files only. It does not access
+  private, deleted, protected, paid or login-required posts.
+- Video metadata is fetched from the independent **FxTwitter** public API
+  (`api.fxtwitter.com`). This third-party service is not affiliated with X
+  or NOVA. The app sends **only the numeric post ID**, not login details or
+  tracking/query parameters. Video data is downloaded from `video.twimg.com`.
+- If the third-party service is down, changes its JSON format, or no public MP4
+  is available, the app reports an error rather than guessing a media URL.
+- Selected video numbers are persisted in the queue URL so a paused item can
+  be resolved again on resume without downloading a different clip.
+- Only download videos you own or have permission to save. Respect licenses
+  and the applicable rules of the publishing platform.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

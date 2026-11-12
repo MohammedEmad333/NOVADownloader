@@ -78,6 +78,8 @@ public class MainActivity extends Activity {
     private final SearchLoadGate searchLoadGate = new SearchLoadGate();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Option> options = new ArrayList<>();
+    private final java.util.IdentityHashMap<Option, Integer> twitterClips =
+            new java.util.IdentityHashMap<>();
     private final List<AudioStream> audioTracks = new ArrayList<>();
     private final List<Entry> playlist = new ArrayList<>();
     private final List<Entry> collectionAll = new ArrayList<>();
@@ -360,6 +362,7 @@ public class MainActivity extends Activity {
         final TextView youtube = Ui.chip(this, "▶ YouTube", Ui.ACCENT);
         final TextView soundcloud = Ui.chip(this, "☁ SoundCloud", Ui.SECONDARY);
         final TextView spotify = Ui.chip(this, "♫ Spotify links", Ui.OK);
+        final TextView twitter = Ui.chip(this, "𝕏 X / Twitter", Ui.ACCENT);
         sources.addView(youtube);
         final LinearLayout.LayoutParams sc = new LinearLayout.LayoutParams(-2, -2);
         sc.leftMargin = Ui.dp(this, 7);
@@ -367,6 +370,9 @@ public class MainActivity extends Activity {
         final LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
         sp.leftMargin = Ui.dp(this, 7);
         sources.addView(spotify, sp);
+        final LinearLayout.LayoutParams tw = new LinearLayout.LayoutParams(-2, -2);
+        tw.leftMargin = Ui.dp(this, 7);
+        sources.addView(twitter, tw);
         // Keep source chips usable even on narrow phones and with large accessibility text.
         final android.widget.HorizontalScrollView sourceScroll =
                 new android.widget.HorizontalScrollView(this);
@@ -824,6 +830,15 @@ public class MainActivity extends Activity {
                     return;
                 }
 
+                if (TwitterVideo.isPostUrl(input)) {
+                    final TwitterVideo.Post post = TwitterVideo.fetch(input);
+                    main.post(() -> {
+                        if (!searchLoadGate.isCurrent(generation)) return;
+                        showTwitterPost(post);
+                    });
+                    return;
+                }
+
                 if (!looksLikeUrl(input)) {
                     rememberSearch(input);
                     final int source = selectedSource;
@@ -891,6 +906,7 @@ public class MainActivity extends Activity {
         currentArtist = "";
         currentCover = "";
         options.clear();
+        twitterClips.clear();
         playlist.clear();
         collectionAll.clear();
         collectionName = "";
@@ -1220,6 +1236,33 @@ public class MainActivity extends Activity {
         dialog.show();
     }
 
+    private void showTwitterPost(final TwitterVideo.Post post) {
+        resetFetch();
+        pageUrl = post.canonicalUrl;
+        videoTitle = Streams.sanitize(post.title);
+        currentArtist = post.author;
+        status.setText(tr("X / Twitter public video", "فيديو عام من إكس / تويتر")
+                + "\n" + post.title
+                + (post.author.isEmpty() ? "" : "\n" + post.author)
+                + "\n" + post.videos.size()
+                + tr(" video(s) available · choose one below",
+                        " فيديو متاح · اختر الفيديو أدناه"));
+        if (!post.videos.isEmpty()) loadThumbnail(post.videos.get(0).thumbnail);
+        for (int i = 0; i < post.videos.size(); i++) {
+            final TwitterVideo.Video video = post.videos.get(i);
+            final String label = tr("Video ", "فيديو ") + (i + 1);
+            final String detail = (video.width > 0 && video.height > 0
+                    ? video.width + " × " + video.height + " · " : "")
+                    + "MP4" + tr(" · public post", " · منشور عام");
+            final Option option = new Option(label, detail,
+                    DownloadService.Spec.muxed(video.height, label),
+                    video.url, null, "mp4", "video/mp4", null, false);
+            options.add(option);
+            twitterClips.put(option, i);
+        }
+        formatAdapter.notifyDataSetChanged();
+    }
+
     private void showMedia(final StreamInfo info, final String source) {
         showMedia(info, source, "", "", "");
     }
@@ -1478,7 +1521,12 @@ public class MainActivity extends Activity {
             audioUrl = track.getContent();
             spec = DownloadService.Spec.merge(spec.height, track.getAudioTrackId(), spec.label);
         }
-        final DownloadService.Task task = new DownloadService.Task(pageUrl, videoTitle, spec);
+        final Integer clip = twitterClips.get(option);
+        final String taskUrl = clip == null
+                ? pageUrl : TwitterVideo.pageUrlFor(pageUrl, clip);
+        final String taskTitle = clip == null ? videoTitle
+                : Streams.sanitize(videoTitle + " - Video " + (clip + 1));
+        final DownloadService.Task task = new DownloadService.Task(taskUrl, taskTitle, spec);
         task.preResolve(option.videoUrl, audioUrl, option.extension, option.mimeType);
         final boolean added = DownloadService.enqueue(this, task);
         Toast.makeText(this, added ? "Queued" : "Already in queue",
