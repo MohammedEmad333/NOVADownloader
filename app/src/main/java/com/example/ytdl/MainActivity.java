@@ -1301,101 +1301,156 @@ public class MainActivity extends Activity {
         @Override public Object getItem(final int p) { return options.get(p); }
         @Override public long getItemId(final int p) { return p; }
         @Override public View getView(final int position, final View convertView, final ViewGroup parent) {
-            final LinearLayout row = new LinearLayout(MainActivity.this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setBackground(Ui.pressable(MainActivity.this, Ui.SURFACE, Ui.LINE, 6));
-            row.setPadding(Ui.dp(MainActivity.this, 12), Ui.dp(MainActivity.this, 10),
-                    Ui.dp(MainActivity.this, 12), Ui.dp(MainActivity.this, 10));
-            final Option o = options.get(position);
-            if (o.thumbnailUrl != null && !o.thumbnailUrl.isEmpty()) {
+            final Option option = options.get(position);
+            final LinearLayout card = new LinearLayout(MainActivity.this);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setBackground(Ui.pressable(MainActivity.this,
+                    Ui.SURFACE, Ui.SURFACE_RAISED, 20));
+            card.setPadding(Ui.dp(MainActivity.this, 13), Ui.dp(MainActivity.this, 13),
+                    Ui.dp(MainActivity.this, 13), Ui.dp(MainActivity.this, 13));
+            card.setMinHeight(Ui.dp(MainActivity.this, 82));
+            if (option.thumbnailUrl != null && !option.thumbnailUrl.isEmpty()) {
                 final ImageView thumb = new ImageView(MainActivity.this);
                 thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                thumb.setBackground(Ui.box(MainActivity.this, Ui.SURFACE_RAISED, Ui.LINE, 13));
+                thumb.setClipToOutline(true);
                 final LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(
-                        Ui.dp(MainActivity.this, 96), Ui.dp(MainActivity.this, 54));
-                thumbParams.rightMargin = Ui.dp(MainActivity.this, 12);
-                row.addView(thumb, thumbParams);
-                loadThumbnailInto(o.thumbnailUrl, thumb);
+                        Ui.dp(MainActivity.this, 96), Ui.dp(MainActivity.this, 62));
+                thumbParams.rightMargin = Ui.dp(MainActivity.this, 13);
+                card.addView(thumb, thumbParams);
+                loadThumbnailInto(option.thumbnailUrl, thumb);
+            } else {
+                final TextView icon = Ui.headline(MainActivity.this, 23);
+                icon.setText("↓");
+                icon.setTextColor(Ui.ACCENT);
+                icon.setGravity(Gravity.CENTER);
+                icon.setBackground(Ui.box(MainActivity.this, Ui.ACCENT_SOFT,
+                        Color.TRANSPARENT, 13));
+                final LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(
+                        Ui.dp(MainActivity.this, 48), Ui.dp(MainActivity.this, 48));
+                iconParams.rightMargin = Ui.dp(MainActivity.this, 13);
+                card.addView(icon, iconParams);
             }
-            final LinearLayout text = new LinearLayout(MainActivity.this);
-            text.setOrientation(LinearLayout.VERTICAL);
-            final TextView primary = Ui.mono(MainActivity.this, 15, Ui.TEXT);
-            primary.setText(o.primary);
-            primary.setMaxLines(2);
-            primary.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-            text.addView(primary);
-            final TextView detail = Ui.mono(MainActivity.this, 12, Ui.MUTED);
-            detail.setText(o.detail);
-            detail.setMaxLines(2);
-            detail.setPadding(0, Ui.dp(MainActivity.this, 3), 0, 0);
-            text.addView(detail);
-            row.addView(text, new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            final LinearLayout info = new LinearLayout(MainActivity.this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            final TextView title = Ui.headline(MainActivity.this, 14);
+            title.setText(option.primary);
+            title.setMaxLines(2);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            info.addView(title);
+            final TextView subtitle = Ui.sans(MainActivity.this, 12, Ui.MUTED);
+            subtitle.setText(option.detail);
+            subtitle.setMaxLines(2);
+            subtitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            final LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-1, -2);
+            subtitleParams.topMargin = Ui.dp(MainActivity.this, 5);
+            info.addView(subtitle, subtitleParams);
+            card.addView(info, new LinearLayout.LayoutParams(0, -2, 1f));
+            final TextView arrow = Ui.headline(MainActivity.this, 20);
+            arrow.setText("›");
+            arrow.setTextColor(Ui.ACCENT);
+            arrow.setGravity(Gravity.CENTER);
+            card.addView(arrow, new LinearLayout.LayoutParams(
+                    Ui.dp(MainActivity.this, 30), Ui.dp(MainActivity.this, 48)));
             final LinearLayout wrap = new LinearLayout(MainActivity.this);
-            wrap.setPadding(0, 0, 0, Ui.dp(MainActivity.this, 8));
-            wrap.addView(row, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            wrap.setPadding(0, 0, 0, Ui.dp(MainActivity.this, 10));
+            wrap.addView(card, new LinearLayout.LayoutParams(-1, -2));
             return wrap;
         }
     }
 
     private final class QueueAdapter extends BaseAdapter {
         @Override public int getCount() { return Math.max(1, queueSnapshot.size()); }
-        @Override public Object getItem(final int p) { return p < queueSnapshot.size() ? queueSnapshot.get(p) : null; }
+        @Override public Object getItem(final int p) {
+            return p < queueSnapshot.size() ? queueSnapshot.get(p) : null;
+        }
         @Override public long getItemId(final int p) { return p; }
         @Override public View getView(final int position, final View convertView, final ViewGroup parent) {
             if (queueSnapshot.isEmpty()) {
-                final TextView empty = Ui.sans(MainActivity.this, 14, Ui.MUTED);
-                empty.setText("Nothing queued yet.");
-                empty.setPadding(Ui.dp(MainActivity.this, 4), Ui.dp(MainActivity.this, 24), 0, 0);
+                final LinearLayout empty = Ui.section(MainActivity.this, "ALL CLEAR",
+                        "No downloads yet", "Find something you love in Explore, then save it here.");
+                empty.setPadding(Ui.dp(MainActivity.this, 17), Ui.dp(MainActivity.this, 25),
+                        Ui.dp(MainActivity.this, 17), Ui.dp(MainActivity.this, 25));
+                empty.setBackground(Ui.box(MainActivity.this, Ui.SURFACE, Ui.LINE, 20));
                 return empty;
             }
             final DownloadService.Task task = queueSnapshot.get(position);
             final LinearLayout card = new LinearLayout(MainActivity.this);
             card.setOrientation(LinearLayout.VERTICAL);
-            card.setBackground(Ui.box(MainActivity.this, Ui.SURFACE, Ui.LINE, 6));
-            card.setPadding(Ui.dp(MainActivity.this, 14), Ui.dp(MainActivity.this, 12),
-                    Ui.dp(MainActivity.this, 14), Ui.dp(MainActivity.this, 12));
-            final TextView title = Ui.sans(MainActivity.this, 14, Ui.TEXT);
-            title.setText(task.title);
-            title.setMaxLines(1);
-            card.addView(title);
-            final TextView meta = Ui.mono(MainActivity.this, 12, stateColor(task.state));
+            card.setBackground(Ui.box(MainActivity.this, Ui.SURFACE, Ui.LINE, 20));
+            card.setPadding(Ui.dp(MainActivity.this, 16), Ui.dp(MainActivity.this, 15),
+                    Ui.dp(MainActivity.this, 16), Ui.dp(MainActivity.this, 15));
+
+            final LinearLayout top = new LinearLayout(MainActivity.this);
+            top.setOrientation(LinearLayout.HORIZONTAL);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            final TextView title = Ui.headline(MainActivity.this, 15);
+            title.setText(task.title == null ? "Untitled download" : task.title);
+            title.setMaxLines(2);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            top.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+
+            final TextView state = Ui.chip(MainActivity.this,
+                    task.state.label, stateColor(task.state));
+            final LinearLayout.LayoutParams stateParams = new LinearLayout.LayoutParams(-2, -2);
+            stateParams.leftMargin = Ui.dp(MainActivity.this, 8);
+            top.addView(state, stateParams);
+            card.addView(top);
+
+            final TextView meta = Ui.sans(MainActivity.this, 12, Ui.MUTED);
             meta.setText(metaLine(task));
-            meta.setPadding(0, Ui.dp(MainActivity.this, 4), 0, Ui.dp(MainActivity.this, 8));
-            card.addView(meta);
+            meta.setMaxLines(2);
+            final LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(-1, -2);
+            metaParams.topMargin = Ui.dp(MainActivity.this, 8);
+            metaParams.bottomMargin = Ui.dp(MainActivity.this, 12);
+            card.addView(meta, metaParams);
+
             card.addView(progressRule(task));
             if (!task.state.finished()) card.addView(controls(task));
             else if (task.state == DownloadService.State.FAILED) card.addView(retryControls(task));
             else if (task.state == DownloadService.State.DONE && task.outputUri != null) {
                 card.addView(doneControls(task));
             }
+
             final LinearLayout wrap = new LinearLayout(MainActivity.this);
-            wrap.setPadding(0, 0, 0, Ui.dp(MainActivity.this, 8));
-            wrap.addView(card, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            wrap.setPadding(0, 0, 0, Ui.dp(MainActivity.this, 10));
+            wrap.addView(card, new LinearLayout.LayoutParams(-1, -2));
             return wrap;
         }
     }
 
     private View progressRule(final DownloadService.Task task) {
-        final int percent = task.state == DownloadService.State.DONE ? 100 : task.percent();
-        final LinearLayout bar = new LinearLayout(this);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setWeightSum(100f);
-        final View filled = new View(this);
-        filled.setBackgroundColor(stateColor(task.state));
-        bar.addView(filled, new LinearLayout.LayoutParams(0, Math.max(2, Ui.dp(this, 2)), percent));
-        final View rest = new View(this);
-        rest.setBackgroundColor(Ui.LINE);
-        bar.addView(rest, new LinearLayout.LayoutParams(0, Math.max(2, Ui.dp(this, 2)), 100 - percent));
-        return bar;
+        final int percent = Math.max(0, Math.min(100,
+                task.state == DownloadService.State.DONE ? 100 : task.percent()));
+        final android.widget.ProgressBar bar =
+                new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgress(percent);
+        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(stateColor(task.state)));
+        bar.setProgressBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(Ui.LINE));
+        bar.setContentDescription(percent + "% completed");
+        final LinearLayout wrap = new LinearLayout(this);
+        wrap.setGravity(Gravity.CENTER_VERTICAL);
+        wrap.addView(bar, new LinearLayout.LayoutParams(-1, Ui.dp(this, 7)));
+        return wrap;
+    }
+
+    private View horizontalActions(final LinearLayout actions) {
+        final android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
+        scroll.setHorizontalScrollBarEnabled(false);
+        scroll.setFillViewport(false);
+        scroll.setClipToPadding(false);
+        scroll.addView(actions, new android.widget.HorizontalScrollView.LayoutParams(
+                -2, -2));
+        return scroll;
     }
 
     private View controls(final DownloadService.Task task) {
         final LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, Ui.dp(this, 10), 0, 0);
+        row.setPadding(0, Ui.dp(this, 12), 0, 0);
         final boolean paused = task.state == DownloadService.State.PAUSED;
         if (task.state == DownloadService.State.QUEUED || paused) {
             row.addView(smallButton(this, "Top", Ui.MUTED, v -> {
@@ -1409,33 +1464,34 @@ public class MainActivity extends Activity {
             }));
         }
         row.addView(smallButton(this, paused ? "Resume" : "Pause", Ui.ACCENT, v -> {
-            if (paused) DownloadService.resume(this, task); else DownloadService.pause(this, task);
+            if (paused) DownloadService.resume(this, task);
+            else DownloadService.pause(this, task);
             refreshQueue();
         }));
-        row.addView(smallButton(this, "Cancel", Ui.MUTED, v -> {
+        row.addView(smallButton(this, "Cancel", Ui.ERR, v -> {
             DownloadService.cancel(this, task); refreshQueue();
         }));
-        return row;
+        return horizontalActions(row);
     }
 
     private View retryControls(final DownloadService.Task task) {
         final LinearLayout row = new LinearLayout(this);
-        row.setPadding(0, Ui.dp(this, 10), 0, 0);
-        row.addView(smallButton(this, "Retry", Ui.ACCENT, v -> {
+        row.setPadding(0, Ui.dp(this, 12), 0, 0);
+        row.addView(smallButton(this, "Retry download", Ui.ACCENT, v -> {
             DownloadService.retry(this, task); refreshQueue();
         }));
-        return row;
+        return horizontalActions(row);
     }
 
     private View doneControls(final DownloadService.Task task) {
         final LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, Ui.dp(this, 10), 0, 0);
+        row.setPadding(0, Ui.dp(this, 12), 0, 0);
         row.addView(smallButton(this, "Open", Ui.OK, v -> openSaved(task)));
         row.addView(smallButton(this, "Share file", Ui.ACCENT, v -> shareSaved(task)));
         row.addView(smallButton(this, "Copy link", Ui.MUTED, v -> copySourceLink(task)));
         row.addView(smallButton(this, "Share source", Ui.MUTED, v -> shareSourceLink(task)));
-        return row;
+        return horizontalActions(row);
     }
 
     private void openSaved(final DownloadService.Task task) {
@@ -1488,15 +1544,19 @@ public class MainActivity extends Activity {
 
     private View smallButton(final Context c, final String text, final int color,
                              final View.OnClickListener click) {
-        final TextView b = Ui.mono(c, 11, color);
+        final TextView b = Ui.mono(c, 12, color);
         b.setText(text);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(Ui.dp(c, 10), Ui.dp(c, 7), Ui.dp(c, 10), Ui.dp(c, 7));
-        b.setBackground(Ui.box(c, Color.TRANSPARENT, Ui.LINE, 4));
+        b.setMinHeight(Ui.dp(c, 48));
+        b.setMinWidth(Ui.dp(c, 48));
+        b.setPadding(Ui.dp(c, 14), Ui.dp(c, 9), Ui.dp(c, 14), Ui.dp(c, 9));
+        b.setBackground(Ui.pressable(c, Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 14));
+        b.setClickable(true);
+        b.setFocusable(true);
         b.setOnClickListener(click);
         final LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        p.rightMargin = Ui.dp(c, 6);
+                -2, Ui.dp(c, 48));
+        p.rightMargin = Ui.dp(c, 8);
         b.setLayoutParams(p);
         return b;
     }
