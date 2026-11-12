@@ -1309,7 +1309,7 @@ public class MainActivity extends Activity {
                     Ui.SURFACE, Ui.SURFACE_RAISED, 20));
             card.setPadding(Ui.dp(MainActivity.this, 13), Ui.dp(MainActivity.this, 13),
                     Ui.dp(MainActivity.this, 13), Ui.dp(MainActivity.this, 13));
-            card.setMinHeight(Ui.dp(MainActivity.this, 82));
+            card.setMinimumHeight(Ui.dp(MainActivity.this, 82));
             if (option.thumbnailUrl != null && !option.thumbnailUrl.isEmpty()) {
                 final ImageView thumb = new ImageView(MainActivity.this);
                 thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
