@@ -34,6 +34,7 @@ android {
 dependencies {
     implementation 'com.github.teamnewpipe:NewPipeExtractor:v0.26.5'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'androidx.work:work-runtime:2.10.5'
 
     // Maintained FFmpegKit fork. Used only for real MP3 encoding + ID3 metadata/cover art.
     // Same com.arthenica.ffmpegkit API as the retired upstream package.
