@@ -80,7 +80,7 @@ public final class TwitterVideoTest {
     }
 
     @Test public void metadataBodyReadAllowsExactlyTheLimit() throws Exception {
-        final byte[] json = "{\\"tweet\\":{}}".getBytes(StandardCharsets.UTF_8);
+        final byte[] json = "{}".getBytes(StandardCharsets.UTF_8);
         assertArrayEquals(json,
                 TwitterVideo.readBounded(new ByteArrayInputStream(json), json.length));
     }
