@@ -14,7 +14,7 @@ import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34)
-public final class AuroraScreenSmokeTest {
+public final class NovaScreenSmokeTest {
     private static boolean hasText(final View view, final String expected) {
         if (view instanceof TextView
                 && expected.contentEquals(((TextView) view).getText())) return true;
@@ -26,23 +26,26 @@ public final class AuroraScreenSmokeTest {
         return false;
     }
 
-    @Test public void mainScreenCreatesExploreAndDownloadsWithoutLayoutMutations() {
+    @Test public void mainScreenShowsThreeDestinationsAndDiscovery() {
         final MainActivity activity = Robolectric.buildActivity(MainActivity.class)
                 .create().start().resume().get();
         final View root = activity.findViewById(android.R.id.content);
         assertNotNull(root);
-        assertTrue(hasText(root, "Your media, organized."));
-        assertTrue(hasText(root, "Find your next download"));
-        assertTrue(hasText(root, "Download manager"));
-        assertTrue(hasText(root, "Find media"));
+        assertTrue(hasText(root, "NOVA"));
+        assertTrue(hasText(root, "✦  Explore"));
+        assertTrue(hasText(root, "↓  Transfers"));
+        assertTrue(hasText(root, "▣  Library"));
+        assertTrue(hasText(root, "Find it. Save it."));
+        assertTrue(hasText(root, "In motion"));
+        assertTrue(hasText(root, "Discover media  →"));
     }
 
-    @Test public void historyScreenCreatesBrandAndEmptyLibrary() {
+    @Test public void libraryShowsBrandAndEmptyState() {
         final HistoryActivity activity = Robolectric.buildActivity(HistoryActivity.class)
                 .create().start().resume().get();
         final View root = activity.findViewById(android.R.id.content);
         assertNotNull(root);
-        assertTrue(hasText(root, "Saved & remembered"));
-        assertTrue(hasText(root, "AURORA / YOUR LIBRARY"));
+        assertTrue(hasText(root, "Your collection"));
+        assertTrue(hasText(root, "NOVA / YOUR LIBRARY"));
     }
 }
