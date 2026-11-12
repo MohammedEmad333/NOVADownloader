@@ -1,4 +1,4 @@
-# Media Downloader — Android / Java
+# Aurora Downloader — Android / Java
 
 A personal-use Android media downloader built with Java and NewPipeExtractor.
 
@@ -250,3 +250,15 @@ language. That's worth seeing on screen rather than discovering in a finished fi
 ## License
 
 This project is released under the MIT License. See [LICENSE](LICENSE).
+
+## AURORA UI redesign
+
+The native Android UI uses a central design system with a dark canvas and fresh
+lime accent. Explore, Downloads, History, incoming share links, and the launcher
+are visually coordinated. Explore contains link and text search with collapsible
+source/duration/sort filters. Downloads has queue progress cards, a summary,
+Wi-Fi preference, batch actions, collapsible sorting, and overflow-safe controls.
+History includes status badges and open/share actions.
+
+No WebView, new UI framework, or change to the queue's on-disk format is needed.
+The views style themselves on creation, replacing post-render UI mutations.
