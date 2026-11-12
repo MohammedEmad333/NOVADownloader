@@ -87,7 +87,7 @@ final class PendingMediaLedger {
         file = new AtomicFile(path);
     }
 
-    /** Only this app's Downloads and Audio MediaStore item URIs are accepted. */
+    /** Only recorded Downloads, Audio, and Video MediaStore item URIs are accepted. */
     static boolean isOwnedItemUri(Uri uri) {
         if (uri == null || !"content".equals(uri.getScheme())
                 || !"media".equals(uri.getAuthority())
@@ -97,7 +97,9 @@ final class PendingMediaLedger {
         final boolean downloads = parts.size() == 3 && "downloads".equals(parts.get(1));
         final boolean audio = parts.size() == 4
                 && "audio".equals(parts.get(1)) && "media".equals(parts.get(2));
-        if (!downloads && !audio) return false;
+        final boolean video = parts.size() == 4
+                && "video".equals(parts.get(1)) && "media".equals(parts.get(2));
+        if (!downloads && !audio && !video) return false;
         final String id = parts.get(parts.size() - 1);
         if (id.isEmpty() || id.charAt(0) == '0') return false;
         for (int i = 0; i < id.length(); i++) {

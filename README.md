@@ -171,6 +171,25 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   change or become unavailable. No guarantee for every public post.
 - Use only media you own or have permission to save.
 
+## NOVA 1.6.1: open X and import local videos without an API subscription
+
+- **Explore > Open post in X:** paste a valid X/Twitter post URL and open the
+  canonical post through Android's registered X app or browser. NOVA does not
+  receive login credentials, cookies or restricted media URLs.
+- **Explore > Import saved video**, or **Library > Import a video from your device**:
+  Android's system document picker lets you select a video already saved locally
+  through authorized means. NOVA copies supported formats (MP4, WebM, 3GP, MOV,
+  MKV) into `Movies/NOVA` using scoped MediaStore, then records the item as
+  completed in NOVA's searchable Library, with Open and Share actions.
+- The import runs off the main thread, checks file type and size, limits imports
+  to 2 GiB and uses the existing pending-MediaStore crash-recovery ledger.
+  If the Library entry cannot be persisted, the copied media is rolled back.
+- **No X account connection, paid API, cookie import, background private-feed
+  scraping or extra storage permissions.** Opening a post does not automatically
+  download video from accounts requiring a login.
+- Videos must already be available on the device for the import feature to work.
+  Only import content you own or are authorized to save.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

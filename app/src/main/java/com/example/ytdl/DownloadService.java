@@ -447,6 +447,45 @@ public class DownloadService extends Service {
         }
     }
 
+    /**
+     * Register an already-imported, finished local video in the existing Library.
+     * Write the queue atomically and roll back the in-memory entry on failure.
+     * A local import never enters the downloader worker or its retry mechanism.
+     */
+    static Task registerImported(final Context context, final LocalVideoImport.Imported media)
+            throws IOException {
+        if (media == null || media.uri == null || media.bytes <= 0
+                || !LocalVideoImport.supportedMime(media.mime)) {
+            throw new IOException("Invalid imported video");
+        }
+        ensureLoaded(context);
+        final Task task = new Task("local-import://video/" + NEXT_ID.get(),
+                media.name, Spec.muxed(0, "Imported video"));
+        task.mimeType = media.mime;
+        task.extension = media.name.substring(media.name.lastIndexOf('.') + 1);
+        task.outputUri = media.uri.toString();
+        task.state = State.DONE;
+        task.done = media.bytes;
+        task.total = media.bytes;
+        synchronized (IO_LOCK) {
+            synchronized (TASKS) {
+                TASKS.add(task);
+            }
+            try {
+                final JSONArray array = new JSONArray();
+                for (final Task entry : snapshot()) array.put(entry.toJson());
+                new QueueFileStore(new File(context.getFilesDir(), QUEUE_FILE))
+                        .write(array.toString());
+            } catch (final Exception e) {
+                synchronized (TASKS) {
+                    TASKS.remove(task);
+                }
+                throw new IOException("Could not save imported video in Library", e);
+            }
+        }
+        return task;
+    }
+
     public static Task byId(final long id) {
         for (final Task t : snapshot()) {
             if (t.id == id) {

@@ -414,6 +414,26 @@ public class MainActivity extends Activity {
         quickParams.topMargin = Ui.dp(this, 9);
         root.addView(quick, quickParams);
 
+        final LinearLayout localTools = new LinearLayout(this);
+        localTools.setOrientation(LinearLayout.HORIZONTAL);
+        final Button openX = Ui.button(this,
+                tr("Open post in X", "فتح المنشور في X"), false);
+        openX.setOnClickListener(v -> openPostInX());
+        localTools.addView(openX, new LinearLayout.LayoutParams(0, Ui.dp(this, 49), 1f));
+        final Button importLocal = Ui.button(this,
+                tr("Import saved video", "استيراد فيديو محفوظ"), false);
+        importLocal.setOnClickListener(v -> startActivity(
+                new Intent(this, HistoryActivity.class)
+                        .putExtra(HistoryActivity.EXTRA_START_IMPORT, true)));
+        final LinearLayout.LayoutParams localParams =
+                new LinearLayout.LayoutParams(0, Ui.dp(this, 49), 1f);
+        localParams.leftMargin = Ui.dp(this, 8);
+        localTools.addView(importLocal, localParams);
+        final LinearLayout.LayoutParams toolsParams =
+                new LinearLayout.LayoutParams(-1, -2);
+        toolsParams.topMargin = Ui.dp(this, 9);
+        root.addView(localTools, toolsParams);
+
         final Button toggleFilters = Ui.button(this,
                 tr("Refine search   +", "تصفية البحث   +"), false);
         toggleFilters.setTextColor(Ui.MUTED);
@@ -537,6 +557,31 @@ public class MainActivity extends Activity {
                                           final int headerCount, final int optionCount) {
         final int index = position - headerCount;
         return index >= 0 && index < optionCount ? index : -1;
+    }
+
+    private void openPostInX() {
+        final String input = urlInput.getText().toString().trim();
+        final String link = LinkParser.firstSupportedMediaLink(input);
+        final String id = TwitterVideo.statusId(link);
+        if (id == null) {
+            Toast.makeText(this,
+                    tr("Paste a public or accessible X post link first",
+                            "ألصق رابط منشور X أولاً"),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        // Canonical link without share tokens or NOVA's internal clip parameter.
+        // Android chooses X if installed, otherwise the user's browser.
+        final Intent view = new Intent(Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://x.com/i/status/" + id));
+        view.addCategory(Intent.CATEGORY_BROWSABLE);
+        try {
+            startActivity(view);
+        } catch (android.content.ActivityNotFoundException unavailable) {
+            Toast.makeText(this,
+                    tr("No browser available to open X", "لا يوجد متصفح لفتح X"),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private String clipboardText() {
