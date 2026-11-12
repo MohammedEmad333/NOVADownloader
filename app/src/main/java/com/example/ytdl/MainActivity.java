@@ -151,6 +151,9 @@ public class MainActivity extends Activity {
             return;
         }
         main.post(queuePoll);
+        // Scheduled work is resumed on a real foreground visit, not a prohibited
+        // background start of a data-sync foreground service.
+        DownloadService.pokeIfReady(this);
     }
 
     @Override protected void onPause() {
@@ -1081,9 +1084,9 @@ public class MainActivity extends Activity {
     private void showCollection(final String name, final List<Entry> entries,
                                 final boolean audioOnly) {
         collectionAll.clear();
-        collectionAll.addAll(entries);
+        collectionAll.addAll(PlaylistTools.uniqueByUrl(entries, item -> item.url));
         playlist.clear();
-        playlist.addAll(entries);
+        playlist.addAll(collectionAll);
         collectionName = name;
         collectionAudioOnly = audioOnly;
         renderCollectionOptions();
@@ -1131,42 +1134,87 @@ public class MainActivity extends Activity {
         if (collectionAll.isEmpty()) return;
         final String[] labels = new String[collectionAll.size()];
         final boolean[] checked = new boolean[collectionAll.size()];
+        final List<String> titles = new ArrayList<>();
         for (int i = 0; i < collectionAll.size(); i++) {
             final Entry entry = collectionAll.get(i);
             labels[i] = entry.title;
+            titles.add(entry.title);
             checked[i] = playlist.contains(entry);
         }
 
+        final LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(Ui.dp(this, 14), Ui.dp(this, 8),
+                Ui.dp(this, 14), Ui.dp(this, 8));
+        final EditText query = new EditText(this);
+        query.setSingleLine(true);
+        query.setHint(tr("Search within collection", "ابحث داخل القائمة"));
+        content.addView(query, new LinearLayout.LayoutParams(-1, Ui.dp(this, 52)));
+
+        final android.widget.ListView visibleList = new android.widget.ListView(this);
+        visibleList.setChoiceMode(android.widget.ListView.CHOICE_MODE_MULTIPLE);
+        final android.widget.ArrayAdapter<String> adapter =
+                new android.widget.ArrayAdapter<>(this,
+                        android.R.layout.simple_list_item_multiple_choice,
+                        new ArrayList<>());
+        visibleList.setAdapter(adapter);
+        final LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(
+                -1, 0, 1f);
+        content.addView(visibleList, listParams);
+
+        final List<Integer> visibleIndices = new ArrayList<>();
+        final Runnable refreshVisible = () -> {
+            visibleIndices.clear();
+            visibleIndices.addAll(PlaylistTools.matches(titles, query.getText().toString()));
+            adapter.clear();
+            for (int index : visibleIndices) adapter.add(labels[index]);
+            adapter.notifyDataSetChanged();
+            for (int i = 0; i < visibleIndices.size(); i++) {
+                visibleList.setItemChecked(i, checked[visibleIndices.get(i)]);
+            }
+        };
+        visibleList.setOnItemClickListener((parent, view, position, id) -> {
+            if (position < visibleIndices.size()) {
+                checked[visibleIndices.get(position)] = visibleList.isItemChecked(position);
+            }
+        });
+        query.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence value, int start,
+                                                    int count, int after) {}
+            @Override public void onTextChanged(CharSequence value, int start,
+                                                int before, int count) {
+                refreshVisible.run();
+            }
+            @Override public void afterTextChanged(android.text.Editable value) {}
+        });
+        refreshVisible.run();
+
         final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
-                .setTitle("Choose items")
-                .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> checked[which] = isChecked)
-                .setPositiveButton("Apply", (d, which) -> {
+                .setTitle(tr("Choose items", "اختر العناصر"))
+                .setView(content)
+                .setPositiveButton(tr("Apply", "تطبيق"), (d, which) -> {
                     playlist.clear();
                     for (int i = 0; i < collectionAll.size(); i++) {
                         if (checked[i]) playlist.add(collectionAll.get(i));
                     }
                     renderCollectionOptions();
                 })
-                .setNegativeButton("Cancel", null)
-                .setNeutralButton("Select all", null)
+                .setNegativeButton(tr("Cancel", "إلغاء"), null)
+                .setNeutralButton(tr("Select shown", "تحديد الظاهر"), null)
                 .create();
-
         dialog.setOnShowListener(ignored -> {
+            dialog.getWindow().setSoftInputMode(
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+            final android.view.WindowManager.LayoutParams size = dialog.getWindow().getAttributes();
+            size.height = android.view.WindowManager.LayoutParams.MATCH_PARENT;
+            dialog.getWindow().setAttributes(size);
             dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
-                final android.widget.ListView list = dialog.getListView();
-                boolean anyUnchecked = false;
-                for (final boolean value : checked) {
-                    if (!value) {
-                        anyUnchecked = true;
-                        break;
-                    }
-                }
-                for (int i = 0; i < checked.length; i++) {
-                    checked[i] = anyUnchecked;
-                    list.setItemChecked(i, anyUnchecked);
-                }
-                dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)
-                        .setText(anyUnchecked ? "Clear all" : "Select all");
+                final boolean select = !PlaylistTools.allSelected(checked, visibleIndices);
+                PlaylistTools.selectVisible(checked, visibleIndices, select);
+                refreshVisible.run();
+                dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setText(
+                        select ? tr("Clear shown", "إلغاء تحديد الظاهر")
+                                : tr("Select shown", "تحديد الظاهر"));
             });
         });
         dialog.show();

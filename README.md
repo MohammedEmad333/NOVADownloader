@@ -65,6 +65,29 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - This does not scan or delete pending MediaStore rows left by an abrupt power
   loss. Those require a separate verified ownership/recovery workflow.
 
+## NOVA 1.4: scheduling, playlists, signed releases
+
+- **Daily download window:** optional start/end hours in device local time, including
+  windows that cross midnight. The app checks the policy before selecting queued tasks
+  and at transfer checkpoints. A blocked transfer remains queued for later.
+- **Charging-only mode:** optional requirement to have a power source plugged in.
+  Existing Wi-Fi-only preferences still apply.
+- **Background reminder:** Android WorkManager periodically checks for queued work when
+  a scheduling rule is enabled. An eligible task triggers a rate-limited tap-to-open
+  reminder, not an automatic long-running foreground download from the background.
+  Periodic checks are approximate, not exact alarms; Android can defer them.
+  Android 13+ requires notification permission to show the reminder.
+- **Playlists:** duplicate source URLs are removed without changing the order. The
+  collection picker now supports searching within titles and selecting or clearing
+  only the currently visible items, preserving selections hidden by filters.
+- **Signed release workflow:** a separate manual Actions workflow checks tests and
+  produces a signed release APK only when the repository's GitHub Actions secrets
+  `NOVA_KEYSTORE_BASE64`, `NOVA_KEYSTORE_PASSWORD`, `NOVA_KEY_ALIAS`, and
+  `NOVA_KEY_PASSWORD` are configured. The keystore must be generated and
+  retained securely by the maintainer; no keys or passwords are committed.
+  The workflow uploads a signed APK artifact but does not publish a public release.
+  A debug APK remains available from the normal build workflow.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

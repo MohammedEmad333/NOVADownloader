@@ -1,0 +1,77 @@
+name: Signed release APK (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+
+      - name: Install Android 36 SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Verify tests and build unsigned release
+        run: gradle testDebugUnitTest assembleRelease --no-daemon --stacktrace
+
+      - name: Sign and verify APK
+        env:
+          NOVA_KEYSTORE_BASE64: ${{ secrets.NOVA_KEYSTORE_BASE64 }}
+          NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
+          NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
+          NOVA_KEY_PASSWORD: ${{ secrets.NOVA_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in NOVA_KEYSTORE_BASE64 NOVA_KEYSTORE_PASSWORD NOVA_KEY_ALIAS NOVA_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "Required signing secret is missing: ${name}" >&2
+              exit 1
+            fi
+          done
+
+          unsigned="app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [ ! -f "$unsigned" ]; then
+            echo "Unsigned APK missing at $unsigned" >&2
+            exit 1
+          fi
+
+          keystore="$RUNNER_TEMP/nova-release.jks"
+          trap 'rm -f "$keystore"' EXIT
+          printf '%s' "$NOVA_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          signer="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$signer" sign \
+            --ks "$keystore" \
+            --ks-key-alias "$NOVA_KEY_ALIAS" \
+            --ks-pass env:NOVA_KEYSTORE_PASSWORD \
+            --key-pass env:NOVA_KEY_PASSWORD \
+            --out app/build/outputs/apk/release/nova-release-signed.apk \
+            "$unsigned"
+          "$signer" verify --verbose --min-sdk-version 29 \
+            app/build/outputs/apk/release/nova-release-signed.apk
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nova-release-signed-apk
+          path: app/build/outputs/apk/release/nova-release-signed.apk
+          if-no-files-found: error
