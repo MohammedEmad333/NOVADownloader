@@ -1242,9 +1242,9 @@ public class MainActivity extends Activity {
         videoTitle = Streams.sanitize(post.title);
         currentArtist = post.author;
         status.setText(tr("X / Twitter public video", "فيديو عام من إكس / تويتر")
-                + "\\n" + post.title
-                + (post.author.isEmpty() ? "" : "\\n" + post.author)
-                + "\\n" + post.videos.size()
+                + "\n" + post.title
+                + (post.author.isEmpty() ? "" : "\n" + post.author)
+                + "\n" + post.videos.size()
                 + tr(" video(s) available · choose one below",
                         " فيديو متاح · اختر الفيديو أدناه"));
         if (!post.videos.isEmpty()) loadThumbnail(post.videos.get(0).thumbnail);
