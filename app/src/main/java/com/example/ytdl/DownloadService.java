@@ -463,8 +463,19 @@ public class DownloadService extends Service {
     public static void setWifiOnly(final Context context, final boolean enabled) {
         context.getSharedPreferences(PREFS, MODE_PRIVATE)
                 .edit().putBoolean(PREF_WIFI_ONLY, enabled).apply();
-        if (!enabled || isWifiConnected(context)) {
-            wake(context, null, 0);
+        DownloadSchedule.refreshReminder(context);
+        pokeIfReady(context);
+    }
+
+    /** Start queued work only when the current foreground interaction may start a service. */
+    public static void pokeIfReady(final Context context) {
+        if (DownloadSchedule.blockedReason(context) != null
+                || (wifiOnly(context) && !isWifiConnected(context))) return;
+        for (final Task task : snapshot()) {
+            if (task.state == State.QUEUED && !task.cancelled && !task.pauseRequested) {
+                wake(context, null, 0);
+                return;
+            }
         }
     }
 
@@ -820,7 +831,8 @@ public class DownloadService extends Service {
     }
 
     private Task nextQueued() {
-        if (wifiOnly(this) && !isWifiConnected(this)) {
+        if ((wifiOnly(this) && !isWifiConnected(this))
+                || DownloadSchedule.blockedReason(this) != null) {
             return null;
         }
         return nextQueuedIgnoringWifi();
@@ -854,7 +866,10 @@ public class DownloadService extends Service {
         final boolean waitingForWifi = wifiOnly(this) && !isWifiConnected(this)
                 && nextQueuedIgnoringWifi() != null;
         final StringBuilder summary = new StringBuilder();
-        if (waitingForWifi) {
+        final String scheduleBlock = DownloadSchedule.blockedReason(this);
+        if (scheduleBlock != null && nextQueuedIgnoringWifi() != null) {
+            summary.append(scheduleBlock);
+        } else if (waitingForWifi) {
             summary.append("Waiting for Wi-Fi");
         } else {
             summary.append(saved).append(saved == 1 ? " file saved" : " files saved");
@@ -879,6 +894,9 @@ public class DownloadService extends Service {
 
     private void process(final Task task) {
         final Net.Control control = () -> {
+            if (DownloadSchedule.blockedReason(this) != null) {
+                throw new Net.NetworkBlocked();
+            }
             if (wifiOnly(this) && !isWifiConnected(this)) {
                 throw new Net.NetworkBlocked();
             }
