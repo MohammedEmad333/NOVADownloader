@@ -20,12 +20,15 @@ import okhttp3.Response;
 /**
  * Public X/Twitter post video lookup. No account cookies, private posts or login.
  *
- * Uses the independent public FxTwitter API (not affiliated with X). A user
- * supplies a public post URL; its numeric status ID is sent to api.fxtwitter.com.
- * Never send the original URL, its query parameters, or any credentials.
+ * Uses the independent public FxTwitter and vxTwitter APIs (not affiliated
+ * with X). Only the numeric status ID is sent, never the user's original URL,
+ * tracking query parameters, login cookies or credentials.
  */
 final class TwitterVideo {
-    private static final String API = "https://api.fxtwitter.com/status/";
+    private static final String PRIMARY_API = "https://api.fxtwitter.com/status/";
+    private static final String BACKUP_API = "https://api.vxtwitter.com/Twitter/status/";
+    private static final okhttp3.OkHttpClient METADATA_HTTP =
+            Net.HTTP.newBuilder().followRedirects(false).followSslRedirects(false).build();
     private static final int MAX_JSON_BYTES = 512 * 1024;
 
     static final class Video {
@@ -44,7 +47,8 @@ final class TwitterVideo {
         }
 
         String label() {
-            return height > 0 ? height + "p" : "MP4";
+            return (isHlsUrl(url) ? "HLS" : "MP4")
+                    + (height > 0 ? " · " + height + "p" : "");
         }
     }
 
@@ -154,26 +158,91 @@ final class TwitterVideo {
         return buffer.toByteArray();
     }
 
+    /** Try two independent, public metadata providers, without exposing share tokens. */
     static Post fetch(String postUrl) throws IOException {
         final String id = statusId(postUrl);
         if (id == null) throw new IOException("Enter a public X/Twitter post URL");
-        final Request request = new Request.Builder().url(API + id)
-                .header("Accept", "application/json").build();
-        try (Response response = Net.HTTP.newCall(request).execute()) {
+        IOException primaryFailure;
+        try {
+            return parse(id, fetchJson(PRIMARY_API + id));
+        } catch (IOException e) {
+            primaryFailure = e;
+        }
+        try {
+            return parseVx(id, fetchJson(BACKUP_API + id));
+        } catch (IOException fallbackFailure) {
+            final IOException unavailable = new IOException(
+                    "Public X video is unavailable from both metadata providers");
+            unavailable.addSuppressed(primaryFailure);
+            unavailable.addSuppressed(fallbackFailure);
+            throw unavailable;
+        }
+    }
+
+    private static JSONObject fetchJson(String url) throws IOException {
+        final Request request = new Request.Builder().url(url)
+                .header("Accept", "application/json")
+                .header("User-Agent", "NOVADownloader/1.6 (public media metadata)")
+                .build();
+        try (Response response = METADATA_HTTP.newCall(request).execute()) {
             if (!response.isSuccessful() || response.body() == null) {
-                throw new IOException("Public X video lookup unavailable (HTTP "
-                        + response.code() + ")");
+                throw new IOException("Public metadata provider returned HTTP "
+                        + response.code());
             }
             final long length = response.body().contentLength();
             if (length > MAX_JSON_BYTES) throw new IOException("Video metadata too large");
             final byte[] bytes = readBounded(response.body().byteStream(), MAX_JSON_BYTES);
             try {
-                return parse(id, new JSONObject(new String(bytes,
-                        java.nio.charset.StandardCharsets.UTF_8)));
+                return new JSONObject(new String(bytes,
+                        java.nio.charset.StandardCharsets.UTF_8));
             } catch (JSONException invalid) {
-                throw new IOException("Unexpected public X video metadata", invalid);
+                throw new IOException("Unexpected public video metadata", invalid);
             }
         }
+    }
+
+    /** vxTwitter's documented public response has a separate media_extended shape. */
+    static Post parseVx(String expectedId, JSONObject root) throws IOException {
+        if (expectedId == null || !expectedId.matches("[0-9]{10,22}")) {
+            throw new IOException("Invalid public post ID");
+        }
+        if (!expectedId.equals(root.optString("tweetID", ""))) {
+            throw new IOException("Backup provider post ID mismatch");
+        }
+        final List<Video> clips = new ArrayList<>();
+        final JSONArray extended = root.optJSONArray("media_extended");
+        if (extended != null) {
+            for (int i = 0; i < extended.length() && clips.size() < 16; i++) {
+                final JSONObject item = extended.optJSONObject(i);
+                if (item == null) continue;
+                final String type = item.optString("type", "");
+                if (!"video".equals(type) && !"gif".equals(type)) continue;
+                final String url = item.optString("url", "");
+                if (!isSafeMp4Url(url) && !isHlsUrl(url)) continue;
+                final JSONObject size = item.optJSONObject("size");
+                clips.add(new Video(url, size == null ? 0 : Math.max(0, size.optInt("width")),
+                        size == null ? 0 : Math.max(0, size.optInt("height")),
+                        0, safeThumbnail(item.optString("thumbnail_url", ""))));
+            }
+        }
+        // Older vxTwitter records sometimes return only mediaURLs.
+        if (clips.isEmpty()) {
+            final JSONArray links = root.optJSONArray("mediaURLs");
+            if (links != null) {
+                for (int i = 0; i < links.length() && clips.size() < 16; i++) {
+                    final String url = links.optString(i, "");
+                    if (isSafeMp4Url(url) || isHlsUrl(url)) {
+                        clips.add(new Video(url, 0, 0, 0, ""));
+                    }
+                }
+            }
+        }
+        if (clips.isEmpty()) throw new IOException("No public MP4 or HLS video in backup");
+        final String raw = root.optString("text", "").replaceAll("\\s+", " ").trim();
+        final String title = raw.isEmpty() ? "X video " + expectedId
+                : raw.length() > 80 ? raw.substring(0, 80) : raw;
+        return new Post("https://x.com/i/status/" + expectedId,
+                title, root.optString("user_name", ""), clips);
     }
 
     static Post parse(String expectedId, JSONObject root) throws IOException {
@@ -204,27 +273,33 @@ final class TwitterVideo {
                     video.optString("thumbnail", "")));
             final int width = Math.max(0, video.optInt("width"));
             final int height = Math.max(0, video.optInt("height"));
-            Video best = null;
+            Video mp4 = null;
+            Video hls = null;
             if (variants != null) {
                 for (int j = 0; j < variants.length(); j++) {
                     final JSONObject variant = variants.optJSONObject(j);
                     if (variant == null) continue;
                     final String url = variant.optString("url");
-                    if (!isSafeMp4Url(url)) continue;
                     final int bitrate = Math.max(0, variant.optInt("bitrate"));
-                    if (best == null || bitrate > best.bitrate) {
-                        best = new Video(url, width, height, bitrate, thumb);
+                    if (isSafeMp4Url(url) && (mp4 == null || bitrate > mp4.bitrate)) {
+                        mp4 = new Video(url, width, height, bitrate, thumb);
+                    } else if (isHlsUrl(url) && (hls == null || bitrate > hls.bitrate)) {
+                        hls = new Video(url, width, height, bitrate, thumb);
                     }
                 }
             }
-            // Some FxTwitter responses expose a direct video URL without variants.
-            if (best == null && isSafeMp4Url(video.optString("url"))) {
-                best = new Video(video.optString("url"), width, height, 0, thumb);
+            final String direct = video.optString("url", "");
+            if (mp4 == null && isSafeMp4Url(direct)) {
+                mp4 = new Video(direct, width, height, 0, thumb);
+            } else if (hls == null && isHlsUrl(direct)) {
+                hls = new Video(direct, width, height, 0, thumb);
             }
-            if (best != null) found.add(best);
+            // Prefer the resumable direct MP4. Only use HLS when MP4 is unavailable.
+            if (mp4 != null) found.add(mp4);
+            else if (hls != null) found.add(hls);
         }
         if (found.isEmpty()) {
-            throw new IOException("No downloadable public MP4 variant found in this post");
+            throw new IOException("No public MP4 or supported HLS video in this post");
         }
         final JSONObject author = tweet.optJSONObject("author");
         final String authorName = author == null ? "" : author.optString("name", "");
@@ -236,15 +311,24 @@ final class TwitterVideo {
     }
 
     static boolean isSafeMp4Url(String value) {
+        return isSafeCdnFile(value, ".mp4");
+    }
+
+    static boolean isHlsUrl(String value) {
+        return isSafeCdnFile(value, ".m3u8");
+    }
+
+    static boolean isSafeCdnFile(String value, String suffix) {
         if (value == null || value.isEmpty()) return false;
         try {
             final Uri uri = Uri.parse(value);
             if (!"https".equalsIgnoreCase(uri.getScheme())
                     || uri.getUserInfo() != null || uri.getPort() != -1
                     || uri.getHost() == null
+                    || uri.getFragment() != null
                     || !"video.twimg.com".equalsIgnoreCase(uri.getHost())) return false;
             final String path = uri.getPath();
-            return path != null && path.toLowerCase(Locale.US).endsWith(".mp4");
+            return path != null && path.toLowerCase(Locale.US).endsWith(suffix);
         } catch (RuntimeException invalid) {
             return false;
         }

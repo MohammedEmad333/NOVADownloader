@@ -1061,6 +1061,10 @@ public class DownloadService extends Service {
     }
 
     private void transfer(final Task task, final Net.Control control) throws Exception {
+        if (TwitterVideo.isPostUrl(task.pageUrl) && TwitterVideo.isHlsUrl(task.videoUrl)) {
+            transferTwitterHls(task, control);
+            return;
+        }
         final File video = videoTemp(this, task);
         final File audio = audioTemp(this, task);
         final File merged = mergedTemp(this, task);
@@ -1106,6 +1110,23 @@ public class DownloadService extends Service {
         }
     }
 
+    /** A public X HLS playlist is cached segment-by-segment and remuxed entirely offline. */
+    private void transferTwitterHls(final Task task, final Net.Control control)
+            throws Exception {
+        stage(task, State.VIDEO);
+        final File manifest = TwitterHls.download(this, task.id, task.videoUrl, control);
+        control.checkpoint();
+        task.state = State.MERGING;
+        update(task);
+        final File result = TwitterHls.remux(this, task.id, manifest, control);
+        control.checkpoint();
+        task.state = State.SAVING;
+        task.mimeType = "video/mp4";
+        task.extension = "mp4";
+        update(task);
+        task.outputUri = publish(result, task.title + ".mp4", "video/mp4").toString();
+    }
+
     private void stage(final Task task, final State state) {
         task.state = state;
         task.done = 0;
@@ -1148,6 +1169,7 @@ public class DownloadService extends Service {
         mp3Temp(c, t).delete();
         subtitleTemp(c, t).delete();
         coverTemp(c, t).delete();
+        TwitterHls.removeDirectory(c, t.id);
     }
 
     private void convertSubtitleToSrt(final Task task, final File source,
