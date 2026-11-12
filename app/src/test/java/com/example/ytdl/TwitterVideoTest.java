@@ -39,6 +39,63 @@ public final class TwitterVideoTest {
                         .put("media", new JSONObject().put("videos", new JSONArray().put(video))));
     }
 
+    @Test public void usesHlsOnlyWhenNoDirectMp4Exists() throws Exception {
+        final JSONObject root = response();
+        final JSONObject media = root.getJSONObject("tweet").getJSONObject("media")
+                .getJSONArray("videos").getJSONObject(0);
+        final String hls = "https://video.twimg.com/ext_tw_video/1/pu/pl/index.m3u8";
+        media.put("formats", new JSONArray()
+                .put(new JSONObject().put("bitrate", 2500000).put("url", hls)));
+        assertEquals(hls, TwitterVideo.parse(ID, root).videos.get(0).url);
+        assertTrue(TwitterVideo.isHlsUrl(TwitterVideo.parse(ID, root).videos.get(0).url));
+        media.getJSONArray("formats").put(
+                new JSONObject().put("bitrate", 1200000).put("url", URL));
+        assertEquals(URL, TwitterVideo.parse(ID, root).videos.get(0).url);
+    }
+
+    @Test public void acceptsIndependentPublicMetadataShape() throws Exception {
+        final JSONObject extended = new JSONObject().put("type", "video")
+                .put("url", URL)
+                .put("size", new JSONObject().put("width", 720).put("height", 1280));
+        final JSONObject root = new JSONObject().put("tweetID", ID)
+                .put("text", "Another public clip")
+                .put("user_name", "Creator")
+                .put("media_extended", new JSONArray().put(extended));
+        final TwitterVideo.Post post = TwitterVideo.parseVx(ID, root);
+        assertEquals("Another public clip", post.title);
+        assertEquals("Creator", post.author);
+        assertEquals(1, post.videos.size());
+        assertEquals(URL, post.videos.get(0).url);
+        assertEquals(1280, post.videos.get(0).height);
+    }
+
+    @Test public void independentProviderRejectsWrongPostOrUnsafeMedia() throws Exception {
+        final JSONObject root = new JSONObject().put("tweetID", "123456789012345678")
+                .put("mediaURLs", new JSONArray().put(URL));
+        try {
+            TwitterVideo.parseVx(ID, root);
+            fail("Mismatched metadata accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("mismatch"));
+        }
+        root.put("tweetID", ID).put("mediaURLs",
+                new JSONArray().put("https://untrusted.invalid/file.mp4"));
+        try {
+            TwitterVideo.parseVx(ID, root);
+            fail("Unsafe metadata video accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("No public"));
+        }
+    }
+
+    @Test public void independentProviderCanReturnPublicHlsVideo() throws Exception {
+        final String hls = "https://video.twimg.com/ext_tw_video/1/pu/pl/index.m3u8";
+        final JSONObject response = new JSONObject().put("tweetID", ID)
+                .put("media_extended", new JSONArray().put(new JSONObject()
+                        .put("type", "video").put("url", hls)));
+        assertEquals(hls, TwitterVideo.parseVx(ID, response).videos.get(0).url);
+    }
+
     @Test public void recognizesPublicStatusUrlsOnly() {
         assertEquals(ID, TwitterVideo.statusId("https://x.com/person/status/" + ID + "?s=20"));
         assertEquals(ID, TwitterVideo.statusId("https://twitter.com/person/status/" + ID));
