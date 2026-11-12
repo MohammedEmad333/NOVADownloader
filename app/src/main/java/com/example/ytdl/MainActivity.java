@@ -1253,7 +1253,8 @@ public class MainActivity extends Activity {
             final String label = tr("Video ", "فيديو ") + (i + 1);
             final String detail = (video.width > 0 && video.height > 0
                     ? video.width + " × " + video.height + " · " : "")
-                    + "MP4" + tr(" · public post", " · منشور عام");
+                    + (TwitterVideo.isHlsUrl(video.url) ? "HLS → MP4" : "MP4")
+                    + tr(" · public post", " · منشور عام");
             final Option option = new Option(label, detail,
                     DownloadService.Spec.muxed(video.height, label),
                     video.url, null, "mp4", "video/mp4", null, false);
