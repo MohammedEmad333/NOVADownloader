@@ -2,7 +2,6 @@ package com.example.ytdl;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.text.TextUtils;
 
 import java.util.Locale;
 
@@ -69,5 +68,14 @@ public final class NovaPreferences {
     public static void setMp3Bitrate(Context context, int value) {
         if (!validMp3Rate(value)) throw new IllegalArgumentException("Invalid MP3 bitrate");
         prefs(context).edit().putInt(MP3_RATE, value).apply();
+    }
+
+    /** Preferred formats sort first without hiding any other available quality. */
+    static int formatPriority(Context context, DownloadService.Kind kind,
+                              int height, int mp3Rate) {
+        if (kind == DownloadService.Kind.MP3 && mp3Rate == mp3Bitrate(context)) return 0;
+        if ((kind == DownloadService.Kind.MERGE || kind == DownloadService.Kind.MUXED)
+                && height == videoHeight(context)) return 0;
+        return 1;
     }
 }
