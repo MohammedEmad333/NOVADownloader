@@ -146,6 +146,31 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - Public post metadata is obtained from an **independent third-party API**;
   successful extraction depends on that service and X remaining accessible.
 
+## NOVA 1.6: public X video provider fallback and HLS
+
+- For public X/Twitter posts, NOVA tries **FxTwitter** for public metadata,
+  then **vxTwitter** when the first provider is unavailable or has no supported media.
+  Only the numeric public post ID is sent to each third-party endpoint.
+- Prefer directly downloadable public MP4 variants. If none exists, NOVA can
+  process a **finite, unencrypted MPEG-TS HLS** playlist available on
+  `video.twimg.com`; it caches segments locally, then remuxes them to MP4
+  without giving FFmpeg network access.
+- Segment cache survives pauses and restarts when the playlist fingerprint
+  remains unchanged. A changed playlist resets the segment cache rather
+  than appending bytes from a different source.
+- Protection: HTTPS and CDN hostname allowlist, no redirects to other hosts,
+  bounded metadata and manifest sizes, maximum 512 segments, 64 MiB per
+  segment and 1 GiB total. The playlist must be finite with ENDLIST.
+- Unsupported formats (DRM/encryption, live or gapped HLS, byte-ranged,
+  discontinuous or fragmented-MP4 streams) fail with a clear error.
+  No login cookies, private/protected posts or paywall bypass.
+- MP4 downloads still use their normal resumable ranged requests.
+  HLS resumes **between complete segments**; conversion may not pause
+  instantly during the local FFmpeg remux.
+- Public metadata and media URLs are provided by third parties that may
+  change or become unavailable. No guarantee for every public post.
+- Use only media you own or have permission to save.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
