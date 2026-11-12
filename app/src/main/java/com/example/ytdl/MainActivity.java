@@ -151,6 +151,9 @@ public class MainActivity extends Activity {
             return;
         }
         main.post(queuePoll);
+        // Scheduled work is resumed on a real foreground visit, not a prohibited
+        // background start of a data-sync foreground service.
+        DownloadService.pokeIfReady(this);
     }
 
     @Override protected void onPause() {
