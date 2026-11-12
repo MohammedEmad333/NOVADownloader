@@ -18,7 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** AURORA saved files and transfer history. */
+/** NOVA library for completed and interrupted media downloads. */
 public final class HistoryActivity extends Activity {
     private final List<DownloadService.Task> items = new ArrayList<>();
     private HistoryAdapter adapter;
@@ -51,10 +51,10 @@ public final class HistoryActivity extends Activity {
         top.setOrientation(LinearLayout.HORIZONTAL);
 
         final TextView back = Ui.headline(this, 25);
-        back.setText("‹");
+        back.setText("←");
         back.setTextColor(Ui.ACCENT);
         back.setGravity(Gravity.CENTER);
-        back.setContentDescription("Back to downloader");
+        back.setContentDescription("Back to Explore and Transfers");
         back.setBackground(Ui.pressable(this, Ui.SURFACE, Ui.ACCENT_SOFT, 15));
         back.setClickable(true);
         back.setFocusable(true);
@@ -62,14 +62,14 @@ public final class HistoryActivity extends Activity {
         top.addView(back, new LinearLayout.LayoutParams(
                 Ui.dp(this, 48), Ui.dp(this, 48)));
 
-        final TextView brand = Ui.overline(this, "AURORA / YOUR LIBRARY");
+        final TextView brand = Ui.eyebrow(this, "NOVA / YOUR LIBRARY");
         final LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1f);
         brandParams.leftMargin = Ui.dp(this, 13);
         top.addView(brand, brandParams);
         root.addView(top);
 
-        final LinearLayout heading = Ui.section(this, "HISTORY / 03",
-                "Saved & remembered", "Your finished downloads, ready to reopen or share.");
+        final LinearLayout heading = Ui.section(this, "LIBRARY / 03",
+                "Your collection", "Everything you've saved, with the option to open or share.");
         final LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(-1, -2);
         headingParams.topMargin = Ui.dp(this, 18);
         headingParams.bottomMargin = Ui.dp(this, 18);
@@ -100,7 +100,7 @@ public final class HistoryActivity extends Activity {
             if (task.state == DownloadService.State.FAILED
                     || task.state == DownloadService.State.CANCELLED) {
                 DownloadService.retry(this, task);
-                Toast.makeText(this, "Download queued again", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Added back to Transfers", Toast.LENGTH_SHORT).show();
                 finish();
             } else if (task.state == DownloadService.State.DONE && task.outputUri != null) {
                 openSaved(task);
@@ -124,8 +124,8 @@ public final class HistoryActivity extends Activity {
             }
         }
         if (summary != null) {
-            summary.setText(saved + " saved files   •   " + failed
-                    + " need attention\n" + items.size() + " entries in your history");
+            summary.setText("✦  " + saved + " saved    ·    " + failed
+                    + " need attention\n" + items.size() + " items in your library");
         }
         if (adapter != null) adapter.notifyDataSetChanged();
     }
@@ -178,8 +178,8 @@ public final class HistoryActivity extends Activity {
         @Override
         public View getView(final int position, final View convertView, final ViewGroup parent) {
             if (items.isEmpty()) {
-                final LinearLayout empty = Ui.section(HistoryActivity.this, "FRESH START",
-                        "Nothing here yet", "Your downloaded media will show up here.");
+                final LinearLayout empty = Ui.section(HistoryActivity.this, "YOUR SPACE",
+                        "A blank canvas", "The things you download will live here.");
                 empty.setPadding(Ui.dp(HistoryActivity.this, 18),
                         Ui.dp(HistoryActivity.this, 26), Ui.dp(HistoryActivity.this, 18),
                         Ui.dp(HistoryActivity.this, 26));
