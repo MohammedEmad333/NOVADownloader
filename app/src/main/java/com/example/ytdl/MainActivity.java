@@ -92,6 +92,7 @@ public class MainActivity extends Activity {
     private Spinner searchSortSpinner;
     private TextView fetchTabLabel;
     private TextView queueTabLabel;
+    private TextView libraryTabLabel;
     private View fetchPane;
     private View queuePane;
     private FormatAdapter formatAdapter;
@@ -167,7 +168,6 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Ui.BG);
         root.setFitsSystemWindows(true);
         root.addView(buildHeader());
-        root.addView(buildTabs());
         fetchPane = buildFetchPane();
         queuePane = buildQueuePane();
         final SwipePager content = new SwipePager(this);
@@ -175,72 +175,98 @@ public class MainActivity extends Activity {
         content.addView(queuePane);
         root.addView(content, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        // Persistent three-destination navigation stays visible above system controls.
+        root.addView(buildTabs());
         return root;
     }
 
     private View buildHeader() {
-        final LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.HORIZONTAL);
-        root.setGravity(Gravity.CENTER_VERTICAL);
-        root.setPadding(Ui.dp(this, 18), Ui.dp(this, 15),
-                Ui.dp(this, 18), Ui.dp(this, 13));
+        final LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
+        shell.setPadding(Ui.dp(this, 16), Ui.dp(this, 14),
+                Ui.dp(this, 16), Ui.dp(this, 9));
 
-        final TextView emblem = Ui.headline(this, 25);
-        emblem.setText("↓");
+        final LinearLayout banner = new LinearLayout(this);
+        banner.setOrientation(LinearLayout.HORIZONTAL);
+        banner.setGravity(Gravity.CENTER_VERTICAL);
+        banner.setPadding(Ui.dp(this, 17), Ui.dp(this, 15),
+                Ui.dp(this, 15), Ui.dp(this, 15));
+        banner.setBackground(Ui.hero(this));
+
+        final TextView emblem = Ui.headline(this, 29);
+        emblem.setText("✦");
         emblem.setTextColor(Ui.BG);
         emblem.setGravity(Gravity.CENTER);
-        emblem.setBackground(Ui.box(this, Ui.ACCENT, Color.TRANSPARENT, 15));
-        emblem.setContentDescription("Aurora Downloader");
-        root.addView(emblem, new LinearLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48)));
+        emblem.setBackground(Ui.glow(this));
+        emblem.setContentDescription("Nova media");
+        banner.addView(emblem, new LinearLayout.LayoutParams(
+                Ui.dp(this, 51), Ui.dp(this, 51)));
 
         final LinearLayout brand = new LinearLayout(this);
         brand.setOrientation(LinearLayout.VERTICAL);
-        final LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        brandParams.leftMargin = Ui.dp(this, 12);
-        root.addView(brand, brandParams);
+        final LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, -2, 1f);
+        bp.leftMargin = Ui.dp(this, 13);
+        banner.addView(brand, bp);
 
-        final TextView eyebrow = Ui.overline(this, "AURORA / MEDIA");
+        final TextView eyebrow = Ui.eyebrow(this, "YOUR MEDIA UNIVERSE");
         brand.addView(eyebrow);
-        final TextView title = Ui.headline(this, 23);
-        title.setText("Your media, organized.");
-        title.setMaxLines(1);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        final LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
-        titleParams.topMargin = Ui.dp(this, 3);
-        brand.addView(title, titleParams);
+        final TextView title = Ui.headline(this, 27);
+        title.setText("NOVA");
+        title.setLetterSpacing(.10f);
+        final LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(-1, -2);
+        tp.topMargin = Ui.dp(this, 2);
+        brand.addView(title, tp);
 
-        final TextView history = Ui.chip(this, "History", Ui.TEXT);
-        history.setMinHeight(Ui.dp(this, 48));
-        history.setMinWidth(Ui.dp(this, 60));
-        history.setContentDescription("Open download history");
-        history.setOnClickListener(v -> startActivity(new Intent(this, HistoryActivity.class)));
-        root.addView(history);
-        return root;
+        final TextView library = Ui.chip(this, "Library", Ui.TEXT);
+        library.setMinWidth(Ui.dp(this, 62));
+        library.setMinHeight(Ui.dp(this, 48));
+        library.setContentDescription("Open saved downloads library");
+        library.setClickable(true);
+        library.setFocusable(true);
+        library.setBackground(Ui.pressable(this, Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 15));
+        library.setOnClickListener(v -> openLibrary());
+        banner.addView(library);
+        shell.addView(banner);
+        return shell;
+    }
+
+    private void openLibrary() {
+        startActivity(new Intent(this, HistoryActivity.class));
     }
 
     private View buildTabs() {
         final LinearLayout wrap = new LinearLayout(this);
         wrap.setOrientation(LinearLayout.HORIZONTAL);
-        wrap.setPadding(Ui.dp(this, 18), Ui.dp(this, 4),
-                Ui.dp(this, 18), Ui.dp(this, 10));
-        wrap.setBackgroundColor(Ui.BG);
-        fetchTabLabel = tabLabel("Explore", true);
-        queueTabLabel = tabLabel("Downloads", false);
-        final LinearLayout.LayoutParams first = new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f);
-        final LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f);
-        second.leftMargin = Ui.dp(this, 9);
+        wrap.setGravity(Gravity.CENTER_VERTICAL);
+        wrap.setPadding(Ui.dp(this, 15), Ui.dp(this, 11),
+                Ui.dp(this, 15), Ui.dp(this, 12));
+        wrap.setBackground(Ui.box(this, Ui.SURFACE, Ui.LINE, 0));
+        fetchTabLabel = tabLabel("✦  Explore", true);
+        queueTabLabel = tabLabel("↓  Transfers", false);
+        libraryTabLabel = tabLabel("▣  Library", false);
+        final LinearLayout.LayoutParams first = new LinearLayout.LayoutParams(
+                0, Ui.dp(this, 52), 1f);
+        final LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(
+                0, Ui.dp(this, 52), 1f);
+        final LinearLayout.LayoutParams third = new LinearLayout.LayoutParams(
+                0, Ui.dp(this, 52), 1f);
+        second.leftMargin = Ui.dp(this, 7);
+        third.leftMargin = Ui.dp(this, 7);
         wrap.addView(fetchTabLabel, first);
         wrap.addView(queueTabLabel, second);
+        wrap.addView(libraryTabLabel, third);
+        libraryTabLabel.setOnClickListener(v -> openLibrary());
         return wrap;
     }
 
     private TextView tabLabel(final String label, final boolean fetch) {
-        final TextView tab = Ui.mono(this, 14, Ui.MUTED);
+        final TextView tab = Ui.mono(this, 13, Ui.MUTED);
         tab.setText(label);
         tab.setGravity(Gravity.CENTER);
         tab.setMinHeight(Ui.dp(this, 48));
         tab.setClickable(true);
         tab.setFocusable(true);
+        tab.setContentDescription(label.trim());
         tab.setOnClickListener(v -> selectTab(fetch));
         return tab;
     }
@@ -249,11 +275,17 @@ public class MainActivity extends Activity {
         fetchPane.setVisibility(fetch ? View.VISIBLE : View.GONE);
         queuePane.setVisibility(fetch ? View.GONE : View.VISIBLE);
         fetchTabLabel.setTextColor(fetch ? Ui.BG : Ui.MUTED);
-        queueTabLabel.setTextColor(fetch ? Ui.BG : Ui.MUTED);
+        queueTabLabel.setTextColor(fetch ? Ui.MUTED : Ui.BG);
         fetchTabLabel.setBackground(Ui.pressable(this,
-                fetch ? Ui.ACCENT : Ui.SURFACE, Ui.ACCENT_SOFT, 15));
+                fetch ? Ui.ACCENT : Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 17));
         queueTabLabel.setBackground(Ui.pressable(this,
-                fetch ? Ui.SURFACE : Ui.ACCENT, Ui.ACCENT_SOFT, 15));
+                fetch ? Ui.SURFACE_RAISED : Ui.ACCENT, Ui.ACCENT_SOFT, 17));
+        if (libraryTabLabel != null) {
+            libraryTabLabel.setTextColor(Ui.MUTED);
+            libraryTabLabel.setBackground(Ui.pressable(this,
+                    Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 17));
+            libraryTabLabel.setSelected(false);
+        }
         fetchTabLabel.setSelected(fetch);
         queueTabLabel.setSelected(!fetch);
     }
@@ -285,14 +317,31 @@ public class MainActivity extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 8),
                 Ui.dp(this, 18), Ui.dp(this, 6));
 
-        final LinearLayout intro = Ui.section(this, "DISCOVER / 01",
-                "Find your next download", "Search across sources or paste a link.");
+        final LinearLayout intro = Ui.section(this, "EXPLORE / 01",
+                "Find it. Save it.", "One search for the media you want to keep.");
         final LinearLayout.LayoutParams introParams = new LinearLayout.LayoutParams(-1, -2);
-        introParams.bottomMargin = Ui.dp(this, 12);
+        introParams.bottomMargin = Ui.dp(this, 11);
         root.addView(intro, introParams);
 
+        final LinearLayout sources = new LinearLayout(this);
+        sources.setOrientation(LinearLayout.HORIZONTAL);
+        sources.setGravity(Gravity.CENTER_VERTICAL);
+        final TextView youtube = Ui.chip(this, "▶ YouTube", Ui.ACCENT);
+        final TextView soundcloud = Ui.chip(this, "☁ SoundCloud", Ui.SECONDARY);
+        final TextView spotify = Ui.chip(this, "♫ Spotify links", Ui.OK);
+        sources.addView(youtube);
+        final LinearLayout.LayoutParams sc = new LinearLayout.LayoutParams(-2, -2);
+        sc.leftMargin = Ui.dp(this, 7);
+        sources.addView(soundcloud, sc);
+        final LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
+        sp.leftMargin = Ui.dp(this, 7);
+        sources.addView(spotify, sp);
+        final LinearLayout.LayoutParams sourceParams = new LinearLayout.LayoutParams(-1, -2);
+        sourceParams.bottomMargin = Ui.dp(this, 11);
+        root.addView(sources, sourceParams);
+
         urlInput = new EditText(this);
-        urlInput.setHint("Search a title or paste a media link");
+        urlInput.setHint("Search anything or drop a link…");
         urlInput.setHintTextColor(Ui.MUTED);
         urlInput.setTextColor(Ui.TEXT);
         urlInput.setTextSize(Ui.size(15));
@@ -301,16 +350,16 @@ public class MainActivity extends Activity {
         urlInput.setSingleLine(false);
         urlInput.setMaxLines(2);
         urlInput.setMinHeight(Ui.dp(this, 54));
-        urlInput.setBackground(Ui.box(this, Ui.SURFACE_RAISED, Ui.LINE, 17));
+        urlInput.setBackground(Ui.box(this, Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 19));
         urlInput.setPadding(Ui.dp(this, 16), Ui.dp(this, 11),
                 Ui.dp(this, 16), Ui.dp(this, 11));
         root.addView(urlInput, new LinearLayout.LayoutParams(-1, Ui.dp(this, 56)));
 
         final LinearLayout quick = new LinearLayout(this);
         quick.setOrientation(LinearLayout.HORIZONTAL);
-        final Button paste = Ui.button(this, "Paste link", false);
+        final Button paste = Ui.button(this, "Paste", false);
         paste.setOnClickListener(v -> pasteFromClipboard());
-        final Button pasteFetch = Ui.button(this, "Paste & find", false);
+        final Button pasteFetch = Ui.button(this, "Paste & preview", false);
         pasteFetch.setOnClickListener(v -> pasteAndFetchFromClipboard());
         final LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, Ui.dp(this, 47), 1f);
         final LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, Ui.dp(this, 47), 1f);
@@ -321,7 +370,7 @@ public class MainActivity extends Activity {
         quickParams.topMargin = Ui.dp(this, 9);
         root.addView(quick, quickParams);
 
-        final Button toggleFilters = Ui.button(this, "Filters & sorting  +", false);
+        final Button toggleFilters = Ui.button(this, "Refine search   +", false);
         toggleFilters.setTextColor(Ui.MUTED);
         final LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(-1, Ui.dp(this, 45));
         toggleParams.topMargin = Ui.dp(this, 9);
@@ -338,7 +387,7 @@ public class MainActivity extends Activity {
         toggleFilters.setOnClickListener(v -> {
             final boolean open = filters.getVisibility() != View.VISIBLE;
             filters.setVisibility(open ? View.VISIBLE : View.GONE);
-            toggleFilters.setText(open ? "Filters & sorting  −" : "Filters & sorting  +");
+            toggleFilters.setText(open ? "Refine search   −" : "Refine search   +");
         });
 
         searchSourceSpinner = compactSpinner(new String[]{"All sources", "YouTube", "SoundCloud"});
@@ -362,7 +411,7 @@ public class MainActivity extends Activity {
         actions.setOrientation(LinearLayout.HORIZONTAL);
         final Button recent = Ui.button(this, "Recent", false);
         recent.setOnClickListener(v -> showRecentSearches());
-        fetchButton = Ui.button(this, "Find media", true);
+        fetchButton = Ui.button(this, "Discover media  →", true);
         fetchButton.setOnClickListener(v -> fetch(urlInput.getText().toString().trim()));
         final LinearLayout.LayoutParams recentParams = new LinearLayout.LayoutParams(0, Ui.dp(this, 53), .8f);
         final LinearLayout.LayoutParams fetchParams = new LinearLayout.LayoutParams(0, Ui.dp(this, 53), 1.5f);
@@ -384,7 +433,7 @@ public class MainActivity extends Activity {
         root.addView(preview, imageParams);
 
         status = Ui.sans(this, 13, Ui.MUTED);
-        status.setText("Ready to explore. Your results will appear here.");
+        status.setText("Ready when you are. Pick a result to choose its format.");
         status.setLineSpacing(Ui.dp(this, 2), 1f);
         status.setPadding(Ui.dp(this, 13), Ui.dp(this, 12),
                 Ui.dp(this, 13), Ui.dp(this, 12));
@@ -515,8 +564,8 @@ public class MainActivity extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 8),
                 Ui.dp(this, 18), Ui.dp(this, 5));
 
-        final LinearLayout intro = Ui.section(this, "YOUR LIBRARY / 02",
-                "Download manager", "Control your transfers and keep everything in sync.");
+        final LinearLayout intro = Ui.section(this, "TRANSFERS / 02",
+                "In motion", "Every transfer, pause and retry in one place.");
         final LinearLayout.LayoutParams introParams = new LinearLayout.LayoutParams(-1, -2);
         introParams.bottomMargin = Ui.dp(this, 12);
         root.addView(intro, introParams);
@@ -540,7 +589,7 @@ public class MainActivity extends Activity {
                 DownloadService.setWifiOnly(this, checked));
         root.addView(wifiOnly, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
 
-        final Button filtersToggle = Ui.button(this, "Organize downloads  +", false);
+        final Button filtersToggle = Ui.button(this, "Filter & sort  +", false);
         filtersToggle.setTextColor(Ui.MUTED);
         root.addView(filtersToggle, new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
 
@@ -554,7 +603,7 @@ public class MainActivity extends Activity {
         filtersToggle.setOnClickListener(v -> {
             final boolean expanded = filters.getVisibility() != View.VISIBLE;
             filters.setVisibility(expanded ? View.VISIBLE : View.GONE);
-            filtersToggle.setText(expanded ? "Organize downloads  −" : "Organize downloads  +");
+            filtersToggle.setText(expanded ? "Filter & sort  −" : "Filter & sort  +");
         });
         queueFilterSpinner = compactSpinner(new String[]{
                 "All downloads", "Active", "Queued / paused", "Finished", "Failed"
@@ -641,7 +690,7 @@ public class MainActivity extends Activity {
         lp.topMargin = Ui.dp(this, 5);
         root.addView(list, lp);
 
-        final Button clear = Ui.button(this, "Clear completed history", false);
+        final Button clear = Ui.button(this, "Clear finished entries", false);
         clear.setTextColor(Ui.MUTED);
         clear.setOnClickListener(v -> {
             new android.app.AlertDialog.Builder(this)
@@ -756,7 +805,7 @@ public class MainActivity extends Activity {
         if (fetchButton == null) return;
         fetchButton.setEnabled(!busy);
         fetchButton.setAlpha(busy ? 0.65f : 1f);
-        fetchButton.setText(busy ? "Finding media…" : "Find media");
+        fetchButton.setText(busy ? "Searching the universe…" : "Discover media  →");
     }
 
     private void resetFetch() {
