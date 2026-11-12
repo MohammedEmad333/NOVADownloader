@@ -1229,6 +1229,7 @@ public class DownloadService extends Service {
         values.put(MediaStore.Audio.Media.IS_PENDING, 1);
         final Uri uri = resolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values);
         if (uri == null) throw new IOException("Couldn't create MP3 in MediaStore");
+        recordPendingOrRollback(resolver, uri);
         try {
             try (InputStream in = new FileInputStream(source);
                  OutputStream out = resolver.openOutputStream(uri)) {
@@ -1242,6 +1243,7 @@ public class DownloadService extends Service {
             if (resolver.update(uri, values, null, null) <= 0) {
                 throw new IOException("Couldn't finalize MP3 in MediaStore");
             }
+            forgetFinalizedMedia(uri);
             return uri;
         } catch (final Exception e) {
             rollbackPendingMedia(resolver, uri, e);
@@ -1250,11 +1252,45 @@ public class DownloadService extends Service {
         }
     }
 
-    private static void rollbackPendingMedia(final ContentResolver resolver, final Uri uri,
-                                             final Exception error) {
+    /** Record the exact new row before copying anything to it. */
+    private void recordPendingOrRollback(final ContentResolver resolver, final Uri uri)
+            throws IOException {
         try {
-            resolver.delete(uri, null, null);
-        } catch (final RuntimeException cleanupFailure) {
+            new PendingMediaLedger(this).record(uri);
+        } catch (final IOException failure) {
+            // A non-tracked row must not be written to: undo insertion first.
+            try {
+                if (resolver.delete(uri, null, null) != 1) {
+                    failure.addSuppressed(new IOException("Could not undo untracked MediaStore insert"));
+                }
+            } catch (final RuntimeException rollbackError) {
+                failure.addSuppressed(rollbackError);
+            }
+            throw failure;
+        }
+    }
+
+    private void forgetFinalizedMedia(final Uri uri) {
+        // MediaStore already committed IS_PENDING=0. A stale ledger marker is
+        // harmless: the recovery scan verifies the row before deleting.
+        try {
+            new PendingMediaLedger(this).forget(uri);
+        } catch (final IOException failure) {
+            android.util.Log.w("DownloadService",
+                    "Could not remove completed media ledger marker", failure);
+        }
+    }
+
+    private void rollbackPendingMedia(final ContentResolver resolver, final Uri uri,
+                                     final Exception error) {
+        try {
+            if (resolver.delete(uri, null, null) == 1) {
+                new PendingMediaLedger(this).forget(uri);
+            } else {
+                // Keep ledger evidence for a later, confirmed recovery.
+                error.addSuppressed(new IOException("MediaStore rollback did not delete the row"));
+            }
+        } catch (final IOException | RuntimeException cleanupFailure) {
             error.addSuppressed(cleanupFailure);
         }
     }
@@ -1536,6 +1572,7 @@ public class DownloadService extends Service {
 
         final Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
         if (uri == null) throw new IOException("MediaStore wouldn't accept the file");
+        recordPendingOrRollback(resolver, uri);
         try {
             try (InputStream in = new FileInputStream(source);
                  OutputStream out = resolver.openOutputStream(uri)) {
@@ -1551,6 +1588,7 @@ public class DownloadService extends Service {
             if (resolver.update(uri, values, null, null) <= 0) {
                 throw new IOException("Couldn't finalize download in MediaStore");
             }
+            forgetFinalizedMedia(uri);
             return uri;
         } catch (final Exception e) {
             rollbackPendingMedia(resolver, uri, e);

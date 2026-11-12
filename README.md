@@ -97,6 +97,25 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   deletion. Tests cover a busy lock owned by a different thread and a running worker.
 - The download service, existing resume files and saved media remain unchanged.
 
+## NOVA 1.4.2: crash-safe pending media recovery
+
+- New downloads record the exact MediaStore URI in a local atomic ledger
+  immediately after insertion, before copying media. Completed and successfully
+  rolled-back rows are removed from the ledger.
+- **Settings > Storage & Recovery** now shows tracked pending saves and offers a
+  separately confirmed cleanup for entries older than one hour.
+- Recovery deletes only a ledger-tracked row if MediaStore itself still reports
+  `IS_PENDING=1`, no transfer is running and the worker maintenance lock is free.
+  It never scans or bulk-deletes arbitrary library files.
+- A completed media item (`IS_PENDING=0`) is never deleted, even if an interrupted
+  ledger update left a marker behind.
+- Failed/unverifiable deletions stay in the ledger for another manual inspection;
+  corrupt ledgers are not silently replaced.
+- The ledger is device-local (noBackupFilesDir) and is not included in cloud backup.
+- Recovery is conservative and cannot repair a crash occurring in the tiny gap
+  between MediaStore insertion and recording its URI; manual inspection is still
+  required on real Android devices.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
