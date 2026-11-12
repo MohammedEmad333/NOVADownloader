@@ -150,7 +150,7 @@ final class TwitterVideo {
             throw new IOException("No public video found in this post");
         }
         final List<Video> found = new ArrayList<>();
-        for (int i = 0; i < videos.length(); i++) {
+        for (int i = 0; i < videos.length() && found.size() < 16; i++) {
             final JSONObject video = videos.optJSONObject(i);
             if (video == null) continue;
             final JSONArray variants = video.optJSONArray("formats") == null
