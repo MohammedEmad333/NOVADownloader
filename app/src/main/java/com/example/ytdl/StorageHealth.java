@@ -108,8 +108,12 @@ final class StorageHealth {
 
     static Cleanup cleanup(Context context) {
         DownloadService.ensureLoaded(context);
-        return cleanup(context.getCacheDir(), DownloadService.snapshot(),
-                System.currentTimeMillis(), DownloadService::isWorkerRunning);
+        // Take the same lock as the worker, then recheck the live queue and running flag.
+        // Without both checks a transfer may start between inspection and deletion.
+        synchronized (DownloadService.CACHE_MAINTENANCE_LOCK) {
+            return cleanup(context.getCacheDir(), DownloadService.snapshot(),
+                    System.currentTimeMillis(), DownloadService::isWorkerRunning);
+        }
     }
 
     static Cleanup cleanup(File cacheDir, List<DownloadService.Task> tasks, long now,
