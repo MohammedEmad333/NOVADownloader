@@ -134,6 +134,18 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - Only download videos you own or have permission to save. Respect licenses
   and the applicable rules of the publishing platform.
 
+## NOVA 1.5.1: safer public X video lookup
+
+- Accepts ordinary public X/Twitter post URLs and shared `/video/1` through
+  `/video/16` suffixes. The video list is still displayed for explicit choice.
+- Limits third-party FxTwitter JSON responses to 512 KiB even if the server omits
+  the Content-Length header. Oversized metadata fails safely instead of being
+  buffered without a limit.
+- Rejects unsupported suffixes, untrusted domains, private/login-only posts and
+  non-MP4 media. No account cookies are used or collected.
+- Public post metadata is obtained from an **independent third-party API**;
+  successful extraction depends on that service and X remaining accessible.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
