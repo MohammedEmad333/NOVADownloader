@@ -9,7 +9,6 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -119,10 +118,12 @@ final class TwitterVideo {
             throw new IOException("Invalid post identifier");
         }
         final JSONObject tweet = root.optJSONObject("tweet");
-        if (tweet == null || !"ok".equalsIgnoreCase(root.optString("code", ""))) {
+        if (tweet == null || root.optInt("code", -1) != 200) {
             throw new IOException("This public post is unavailable or has no accessible media");
         }
-        if (!expectedId.equals(tweet.optString("id"))) {
+        // Older API responses may omit tweet.id, but when provided it must match.
+        final String returnedId = tweet.optString("id", "");
+        if (!returnedId.isEmpty() && !expectedId.equals(returnedId)) {
             throw new IOException("Post ID mismatch in public video lookup");
         }
         final JSONObject media = tweet.optJSONObject("media");
@@ -134,7 +135,8 @@ final class TwitterVideo {
         for (int i = 0; i < videos.length(); i++) {
             final JSONObject video = videos.optJSONObject(i);
             if (video == null) continue;
-            final JSONArray variants = video.optJSONArray("variants");
+            final JSONArray variants = video.optJSONArray("formats") == null
+                    ? video.optJSONArray("variants") : video.optJSONArray("formats");
             final String thumb = safeThumbnail(video.optString("thumbnail_url",
                     video.optString("thumbnail", "")));
             final int width = Math.max(0, video.optInt("width"));
