@@ -324,6 +324,10 @@ public class DownloadService extends Service {
     private static final List<Task> TASKS = Collections.synchronizedList(new ArrayList<>());
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
+
+    /** Maintenance must not delete task files while transfers can start or run. */
+    static final Object CACHE_MAINTENANCE_LOCK = new Object();
+    static boolean isWorkerRunning() { return RUNNING.get(); }
     private static final AtomicBoolean PAUSE_AFTER_CURRENT = new AtomicBoolean(false);
 
     // ---------------------------------------------------------------- persistence
@@ -771,7 +775,11 @@ public class DownloadService extends Service {
         try {
             Task task;
             while ((task = nextQueued()) != null) {
-                process(task);
+                // The maintenance lock covers selecting a transfer and processing it.
+                // A manual cleanup cannot overlap any write to a task temp file.
+                synchronized (CACHE_MAINTENANCE_LOCK) {
+                    process(task);
+                }
                 if (PAUSE_AFTER_CURRENT.getAndSet(false)) {
                     getSharedPreferences(PREFS, MODE_PRIVATE)
                             .edit().putBoolean(PREF_PAUSE_AFTER_CURRENT, false).apply();
