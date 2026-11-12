@@ -115,6 +115,15 @@ public final class SettingsActivity extends Activity {
                 DownloadService.setWifiOnly(this, checked));
         root.addView(wifi, row());
 
+        addLabel(root, text("STORAGE & RECOVERY", "التخزين والاستعادة"),
+                text("Check disk space and find safe-to-remove temporary files.",
+                        "افحص المساحة والملفات المؤقتة الآمنة للتنظيف."));
+        final android.widget.Button storage = Ui.button(this,
+                text("Open Storage & Recovery", "فتح التخزين والاستعادة"), false);
+        storage.setOnClickListener(v -> startActivity(
+                new android.content.Intent(this, StorageActivity.class)));
+        root.addView(storage, new LinearLayout.LayoutParams(-1, Ui.dp(this, 54)));
+
         final TextView note = Ui.sans(this, 12, Ui.MUTED);
         note.setText(text("Default qualities affect the order of offered formats, not "
                         + "the availability of a stream. You can still select any offered format.",
