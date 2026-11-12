@@ -17,7 +17,9 @@ import android.widget.Toast;
  */
 public final class StorageActivity extends Activity {
     private TextView report;
+    private TextView pendingReport;
     private Button cleanup;
+    private Button pendingCleanup;
     private Button refresh;
     private volatile boolean busy;
 
@@ -82,6 +84,27 @@ public final class StorageActivity extends Activity {
         cleanParams.topMargin = Ui.dp(this, 10);
         root.addView(cleanup, cleanParams);
 
+        final LinearLayout pendingSection = Ui.section(this,
+                tr("MEDIASTORE / RECOVERY", "الوسائط / الاستعادة"),
+                tr("Interrupted saves", "عمليات حفظ غير مكتملة"),
+                tr("Inspect only NOVA's recorded unfinished MediaStore rows.",
+                        "افحص فقط إدخالات الوسائط غير المكتملة التي سجّلها NOVA."));
+        final LinearLayout.LayoutParams sectionParams =
+                new LinearLayout.LayoutParams(-1, -2);
+        sectionParams.topMargin = Ui.dp(this, 24);
+        root.addView(pendingSection, sectionParams);
+
+        pendingReport = Ui.sans(this, 13, Ui.TEXT);
+        pendingReport.setText(tr("Checking recorded media…", "جاري فحص الوسائط المسجلة…"));
+        pendingReport.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
+        root.addView(pendingReport);
+
+        pendingCleanup = Ui.button(this,
+                tr("Remove abandoned pending saves", "حذف عمليات الحفظ المعلقة المهجورة"), false);
+        pendingCleanup.setEnabled(false);
+        pendingCleanup.setOnClickListener(v -> confirmPendingCleanup());
+        root.addView(pendingCleanup, new LinearLayout.LayoutParams(-1, Ui.dp(this, 54)));
+
         final TextView note = Ui.sans(this, 12, Ui.MUTED);
         note.setText(tr("NOVA only cleans recognized task cache files older than 24 hours "
                         + "when no transfer is running. Paused and queued downloads are protected. "
@@ -98,6 +121,7 @@ public final class StorageActivity extends Activity {
         busy = inProgress;
         refresh.setEnabled(!inProgress);
         cleanup.setEnabled(false);
+        pendingCleanup.setEnabled(false);
     }
 
     private void inspect() {
@@ -107,11 +131,34 @@ public final class StorageActivity extends Activity {
         new Thread(() -> {
             try {
                 final StorageHealth.Report data = StorageHealth.inspect(this);
+                PendingMediaLedger.Scan media = null;
+                String mediaError = null;
+                try {
+                    media = PendingMediaLedger.inspect(this);
+                } catch (Exception error) {
+                    mediaError = error.getMessage();
+                }
+                final PendingMediaLedger.Scan scan = media;
+                final String problem = mediaError;
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     lockButtons(false);
                     report.setText(format(data));
                     cleanup.setEnabled(data.reclaimableFiles > 0 && !data.workerRunning);
+                    if (scan == null) {
+                        pendingReport.setText(tr("Media recovery ledger could not be read: ",
+                                "تعذر قراءة سجل استعادة الوسائط: ") + problem);
+                    } else {
+                        pendingReport.setText(tr("Recorded pending saves: ", "عمليات الحفظ المسجلة: ")
+                                + scan.tracked + "\n"
+                                + tr("Old and still pending: ", "قديمة وما زالت معلقة: ")
+                                + scan.eligible + "\n"
+                                + tr("Recent pending saves: ", "عمليات حفظ حديثة: ")
+                                + scan.recent + "\n"
+                                + tr("Unverified entries: ", "إدخالات غير مؤكدة: ")
+                                + scan.unknown);
+                        pendingCleanup.setEnabled(scan.eligible > 0 && !data.workerRunning);
+                    }
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
@@ -119,6 +166,7 @@ public final class StorageActivity extends Activity {
                     lockButtons(false);
                     report.setText(tr("Storage scan could not be completed.",
                             "تعذر إكمال فحص التخزين."));
+                    pendingReport.setText(tr("Scan unavailable", "الفحص غير متاح"));
                 });
             }
         }, "nova-storage-inspect").start();
@@ -152,6 +200,56 @@ public final class StorageActivity extends Activity {
                 .setPositiveButton(tr("Clean", "تنظيف"), (dialog, which) -> clean())
                 .setNegativeButton(tr("Cancel", "إلغاء"), null)
                 .show();
+    }
+
+    private void confirmPendingCleanup() {
+        if (busy) return;
+        new AlertDialog.Builder(this)
+                .setTitle(tr("Remove abandoned pending media?",
+                        "هل تريد حذف عمليات حفظ الوسائط المعلقة؟"))
+                .setMessage(tr("Only MediaStore rows previously recorded by NOVA that are "
+                                + "at least one hour old and still marked unfinished can be "
+                                + "removed. Finished media will never be deleted. "
+                                + "This cannot be undone.",
+                        "سيتم حذف إدخالات الوسائط التي سجلها NOVA فقط إذا مرّت ساعة "
+                                + "وما زالت معلقة. الملفات المكتملة لن تُحذف. "
+                                + "لا يمكن التراجع عن الحذف."))
+                .setPositiveButton(tr("Remove pending rows", "حذف الإدخالات المعلقة"),
+                        (dialog, which) -> cleanPending())
+                .setNegativeButton(tr("Cancel", "إلغاء"), null)
+                .show();
+    }
+
+    private void cleanPending() {
+        if (busy) return;
+        lockButtons(true);
+        new Thread(() -> {
+            try {
+                final PendingMediaLedger.Cleanup result = PendingMediaLedger.cleanup(this);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    lockButtons(false);
+                    final String message = result.blockedByTransfer
+                            ? tr("Transfer active. No recovery cleanup performed.",
+                                    "هناك تنزيل نشط. لم يتم تنظيف الإدخالات.")
+                            : tr("Removed pending saves: ", "تم حذف عمليات الحفظ المعلقة: ")
+                                    + result.rowsDeleted
+                                    + tr(" · Errors: ", " · أخطاء: ") + result.failures;
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                    inspect();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    lockButtons(false);
+                    Toast.makeText(this,
+                            tr("Pending media recovery failed. No bulk cleanup performed.",
+                                    "فشلت الاستعادة. لم يتم إجراء حذف شامل."),
+                            Toast.LENGTH_LONG).show();
+                    inspect();
+                });
+            }
+        }, "nova-pending-media-recovery").start();
     }
 
     private void clean() {
