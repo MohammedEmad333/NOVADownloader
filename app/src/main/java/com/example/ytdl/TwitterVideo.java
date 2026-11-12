@@ -7,6 +7,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -98,7 +100,13 @@ final class TwitterVideo {
                 && !normalized.equals("twitter.com") && !normalized.equals("www.twitter.com")
                 && !normalized.equals("mobile.twitter.com")) return null;
         final List<String> segments = uri.getPathSegments();
-        if (segments.size() != 3 || !"status".equals(segments.get(1))
+        // X sometimes appends /video/1 to shared post links. Recognize only
+        // this exact, bounded suffix; never accept arbitrary extra paths.
+        final boolean videoSuffix = segments.size() == 5
+                && "video".equals(segments.get(3))
+                && isVideoOrdinal(segments.get(4));
+        if ((segments.size() != 3 && !videoSuffix)
+                || !"status".equals(segments.get(1))
                 || segments.get(0).isEmpty()) return null;
         final String id = segments.get(2);
         if (id.length() < 10 || id.length() > 22) return null;
@@ -106,6 +114,44 @@ final class TwitterVideo {
             if (id.charAt(i) < '0' || id.charAt(i) > '9') return null;
         }
         return id;
+    }
+
+    private static boolean isVideoOrdinal(String ordinal) {
+        if (ordinal == null || ordinal.isEmpty() || ordinal.length() > 2
+                || ordinal.charAt(0) == '0') return false;
+        for (int i = 0; i < ordinal.length(); i++) {
+            if (ordinal.charAt(i) < '0' || ordinal.charAt(i) > '9') return false;
+        }
+        return Integer.parseInt(ordinal) <= 16;
+    }
+
+    /**
+     * A proxy may send a huge body without Content-Length. Read at most limit+1
+     * bytes so an oversized or malicious response cannot exhaust app memory.
+     * The caller owns and closes the stream through its enclosing Response.
+     */
+    static byte[] readBounded(InputStream input, int limit) throws IOException {
+        if (input == null || limit <= 0 || limit == Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("Invalid metadata input or limit");
+        }
+        final ByteArrayOutputStream buffer = new ByteArrayOutputStream(
+                Math.min(limit, 8192));
+        final byte[] block = new byte[8192];
+        while (buffer.size() <= limit) {
+            final int left = limit + 1 - buffer.size();
+            final int read = input.read(block, 0, Math.min(block.length, left));
+            if (read < 0) break;
+            if (read == 0) {
+                // Avoid spinning forever on an unusual stream returning zero bytes.
+                final int single = input.read();
+                if (single < 0) break;
+                buffer.write(single);
+            } else {
+                buffer.write(block, 0, read);
+            }
+        }
+        if (buffer.size() > limit) throw new IOException("Video metadata too large");
+        return buffer.toByteArray();
     }
 
     static Post fetch(String postUrl) throws IOException {
@@ -120,8 +166,7 @@ final class TwitterVideo {
             }
             final long length = response.body().contentLength();
             if (length > MAX_JSON_BYTES) throw new IOException("Video metadata too large");
-            final byte[] bytes = response.body().bytes();
-            if (bytes.length > MAX_JSON_BYTES) throw new IOException("Video metadata too large");
+            final byte[] bytes = readBounded(response.body().byteStream(), MAX_JSON_BYTES);
             try {
                 return parse(id, new JSONObject(new String(bytes,
                         java.nio.charset.StandardCharsets.UTF_8)));
