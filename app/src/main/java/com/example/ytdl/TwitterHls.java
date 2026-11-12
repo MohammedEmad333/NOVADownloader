@@ -8,9 +8,7 @@ import com.arthenica.ffmpegkit.FFmpegKit;
 import com.arthenica.ffmpegkit.FFmpegSession;
 import com.arthenica.ffmpegkit.ReturnCode;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -215,7 +213,8 @@ final class TwitterHls {
         }
 
         long total = 0;
-        final StringBuilder local = new StringBuilder("#EXTM3U\n#EXT-X-VERSION:3\n");
+        final StringBuilder local = new StringBuilder("#EXTM3U\n#EXT-X-VERSION:3\n"
+                + "#EXT-X-TARGETDURATION:1\n#EXT-X-MEDIA-SEQUENCE:0\n");
         for (int i = 0; i < playlist.segments.size(); i++) {
             checkpoint.checkpoint();
             final File segment = new File(dir, String.format(Locale.US, "%04d.ts", i));
