@@ -378,7 +378,7 @@ public class MainActivity extends Activity {
 
         final Button toggleFilters = Ui.button(this, "Refine search   +", false);
         toggleFilters.setTextColor(Ui.MUTED);
-        final LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(-1, Ui.dp(this, 45));
+        final LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(-1, Ui.dp(this, 48));
         toggleParams.topMargin = Ui.dp(this, 9);
         root.addView(toggleFilters, toggleParams);
         final LinearLayout filters = new LinearLayout(this);
@@ -468,18 +468,29 @@ public class MainActivity extends Activity {
 
         final ListView list = new ListView(this);
         formatAdapter = new FormatAdapter();
-        list.setAdapter(formatAdapter);
         list.setDivider(null);
         list.setSelector(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         list.setBackgroundColor(Color.TRANSPARENT);
         list.setClipToPadding(false);
         list.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 16));
         list.setVerticalScrollBarEnabled(false);
-        list.setOnItemClickListener((p, v, position, id) -> activate(options.get(position)));
-        final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        lp.topMargin = Ui.dp(this, 4);
-        root.addView(list, lp);
-        return root;
+        // NOVA's search controls belong to the same scrollable surface as results.
+        // Otherwise fixed-height controls squeeze the result list to zero on short
+        // screens or when Android's font size is increased.
+        list.addHeaderView(root, null, false);
+        list.setAdapter(formatAdapter);
+        list.setOnItemClickListener((p, v, position, id) -> {
+            final int index = optionIndexForListPosition(
+                    position, list.getHeaderViewsCount(), options.size());
+            if (index >= 0) activate(options.get(index));
+        });
+        return list;
+    }
+
+    static int optionIndexForListPosition(final int position,
+                                          final int headerCount, final int optionCount) {
+        final int index = position - headerCount;
+        return index >= 0 && index < optionCount ? index : -1;
     }
 
     private String clipboardText() {
@@ -597,7 +608,7 @@ public class MainActivity extends Activity {
 
         final Button filtersToggle = Ui.button(this, "Filter & sort  +", false);
         filtersToggle.setTextColor(Ui.MUTED);
-        root.addView(filtersToggle, new LinearLayout.LayoutParams(-1, Ui.dp(this, 44)));
+        root.addView(filtersToggle, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
 
         final LinearLayout filters = new LinearLayout(this);
         filters.setOrientation(LinearLayout.VERTICAL);
@@ -685,16 +696,12 @@ public class MainActivity extends Activity {
 
         final ListView list = new ListView(this);
         queueAdapter = new QueueAdapter();
-        list.setAdapter(queueAdapter);
         list.setDivider(null);
         list.setSelector(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         list.setBackgroundColor(Color.TRANSPARENT);
         list.setClipToPadding(false);
         list.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
         list.setVerticalScrollBarEnabled(false);
-        final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1f);
-        lp.topMargin = Ui.dp(this, 5);
-        root.addView(list, lp);
 
         final Button clear = Ui.button(this, "Clear finished entries", false);
         clear.setTextColor(Ui.MUTED);
@@ -709,8 +716,16 @@ public class MainActivity extends Activity {
                     .setNegativeButton("Keep history", null)
                     .show();
         });
-        root.addView(clear, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
-        return root;
+        // Headers, queue rows and the clear-history footer now scroll together,
+        // keeping every control reachable on phones with limited vertical space.
+        list.addHeaderView(root, null, false);
+        final LinearLayout footer = new LinearLayout(this);
+        footer.setPadding(Ui.dp(this, 18), Ui.dp(this, 3),
+                Ui.dp(this, 18), Ui.dp(this, 12));
+        footer.addView(clear, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        list.addFooterView(footer, null, false);
+        list.setAdapter(queueAdapter);
+        return list;
     }
 
     private void fetch(final String input) {
