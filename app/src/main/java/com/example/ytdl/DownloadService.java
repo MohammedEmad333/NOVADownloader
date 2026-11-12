@@ -581,6 +581,7 @@ public class DownloadService extends Service {
     }
 
     public static void pause(final Context context, final Task task) {
+        if (task == null || task.state.finished()) return;
         task.pauseRequested = true;
         // A queued task has no worker inside it to notice the flag, so move it directly.
         if (task.state == State.QUEUED) {
@@ -589,11 +590,29 @@ public class DownloadService extends Service {
         save(context);
     }
 
+    /**
+     * A pause can be requested while the worker is still transferring. Resuming
+     * during that window cancels the pause flag without queuing the same task twice.
+     * Finished tasks must go through retry() instead of resume().
+     */
+    static boolean applyResumeRequest(final Task task) {
+        if (task == null || task.state.finished()) return false;
+        if (task.state == State.PAUSED) {
+            task.pauseRequested = false;
+            task.state = State.QUEUED;
+            return true;
+        }
+        if (task.state.active() && task.pauseRequested) {
+            task.pauseRequested = false;
+        }
+        return false;
+    }
+
     public static void resume(final Context context, final Task task) {
-        task.pauseRequested = false;
-        task.state = State.QUEUED;
+        final boolean shouldWake = applyResumeRequest(task);
+        if (task == null || task.state.finished()) return;
         save(context);
-        wake(context, null, 0);
+        if (shouldWake) wake(context, null, 0);
     }
 
     /**
@@ -602,6 +621,8 @@ public class DownloadService extends Service {
      * have been a stale one, and re-deriving is the point of keeping the spec.
      */
     public static void retry(final Context context, final Task task) {
+        if (task == null || (task.state != State.FAILED
+                && task.state != State.CANCELLED)) return;
         task.error = null;
         task.outputUri = null;
         task.cancelled = false;
@@ -623,6 +644,7 @@ public class DownloadService extends Service {
      * a later download of the same id. Hence the cleanup here for tasks nothing is running.
      */
     public static void cancel(final Context context, final Task task) {
+        if (task == null || task.state.finished()) return;
         task.cancelled = true;
         final State current = task.state;
         if (!current.active()) {
@@ -707,9 +729,8 @@ public class DownloadService extends Service {
                     pause(this, task);
                 } else if (ACTION_CANCEL.equals(action)) {
                     cancel(this, task);
-                } else {
-                    task.pauseRequested = false;
-                    task.state = State.QUEUED;
+                } else if (ACTION_RESUME.equals(action)) {
+                    if (applyResumeRequest(task)) save(this);
                 }
             }
         }
