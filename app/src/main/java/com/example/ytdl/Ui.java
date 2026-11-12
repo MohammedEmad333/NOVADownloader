@@ -18,21 +18,22 @@ import android.widget.TextView;
 import java.util.Locale;
 
 /**
- * AURORA design system. Native Android, no WebView or external UI dependencies.
- * Surfaces, spacing, typography, states and touch targets are shared by every screen.
+ * NOVA design system. Native Android with no WebView or additional UI library.
+ * Shared luminous colors, surfaces, typography, interaction states and touch targets.
  */
 public final class Ui {
-    public static final int BG = Color.parseColor("#0B1017");
-    public static final int SURFACE = Color.parseColor("#141D28");
-    public static final int SURFACE_RAISED = Color.parseColor("#1B2835");
-    public static final int LINE = Color.parseColor("#2C3B4A");
-    public static final int TEXT = Color.parseColor("#F3F7FA");
-    public static final int MUTED = Color.parseColor("#9FB0BF");
-    public static final int ACCENT = Color.parseColor("#C5F277");
-    public static final int ACCENT_SOFT = Color.parseColor("#293C2D");
-    public static final int OK = Color.parseColor("#7FE0B3");
-    public static final int ERR = Color.parseColor("#FF8C95");
-    public static final int WARNING = Color.parseColor("#F8C77B");
+    public static final int BG = Color.parseColor("#091022");
+    public static final int SURFACE = Color.parseColor("#141F35");
+    public static final int SURFACE_RAISED = Color.parseColor("#1D2B46");
+    public static final int LINE = Color.parseColor("#304461");
+    public static final int TEXT = Color.parseColor("#F6FAFF");
+    public static final int MUTED = Color.parseColor("#A8B7CF");
+    public static final int ACCENT = Color.parseColor("#8CE0FF");
+    public static final int ACCENT_SOFT = Color.parseColor("#224761");
+    public static final int SECONDARY = Color.parseColor("#F4A7FF");
+    public static final int OK = Color.parseColor("#75E8B5");
+    public static final int ERR = Color.parseColor("#FF95AA");
+    public static final int WARNING = Color.parseColor("#FFC978");
 
     public static final float TYPE_SCALE = 1f;
     public static final int SPACE = 16;
@@ -67,9 +68,9 @@ public final class Ui {
     public static GradientDrawable hero(final Context context) {
         final GradientDrawable background = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                new int[]{Color.parseColor("#274536"), Color.parseColor("#1B3035"), SURFACE});
-        background.setCornerRadius(dp(context, 26));
-        background.setStroke(dp(context, 1), Color.parseColor("#4C6754"));
+                new int[]{Color.parseColor("#343D7E"), Color.parseColor("#213D66"), SURFACE});
+        background.setCornerRadius(dp(context, 28));
+        background.setStroke(dp(context, 1), Color.parseColor("#5066A2"));
         return background;
     }
 
@@ -129,7 +130,7 @@ public final class Ui {
         button.setPadding(dp(context, 13), 0, dp(context, 13), 0);
         button.setStateListAnimator(null);
         button.setBackground(pressable(context, primary ? ACCENT : SURFACE_RAISED,
-                primary ? Color.parseColor("#B0E15E") : ACCENT_SOFT, 15));
+                primary ? Color.parseColor("#66CAE9") : ACCENT_SOFT, 16));
         return button;
     }
 
@@ -140,7 +141,7 @@ public final class Ui {
         text.setMinHeight(dp(context, 32));
         text.setPadding(dp(context, 11), dp(context, 5),
                 dp(context, 11), dp(context, 5));
-        text.setBackground(box(context, SURFACE_RAISED, LINE, 12));
+        text.setBackground(box(context, SURFACE_RAISED, LINE, 13));
         return text;
     }
 
@@ -180,6 +181,23 @@ public final class Ui {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.setNavigationBarDividerColor(BG);
         }
+    }
+
+    /** Bold overline for cards and navigation, still accessible at large font scale. */
+    public static TextView eyebrow(final Context context, final String label) {
+        final TextView text = mono(context, 11, SECONDARY);
+        text.setText(label.toUpperCase(Locale.US));
+        text.setLetterSpacing(.12f);
+        return text;
+    }
+
+    /** Small decorative mark for hero sections; never an interactive control. */
+    public static GradientDrawable glow(final Context context) {
+        final GradientDrawable glow = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.parseColor("#8CE0FF"), Color.parseColor("#D6A0FF")});
+        glow.setCornerRadius(dp(context, 20));
+        return glow;
     }
 
     public static String bytes(final long count) {
