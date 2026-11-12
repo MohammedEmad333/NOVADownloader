@@ -48,6 +48,23 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - Preferences stay on the device and do not need an account or internet connection.
 - Existing queued tasks and saved files are retained when upgrading.
 
+## NOVA 1.3: storage health and recovery
+
+- Settings now includes **Storage & Recovery**, with an on-device view of space
+  available to cache, paused/queued tasks and protected partial files.
+- The scan reports task-specific temporary files eligible for cleanup. Files
+  are never removed merely for being large: only recognized task-cache names
+  older than 24 hours that do not belong to unfinished queue tasks qualify.
+- Cleanup is **manual**, needs confirmation, and is blocked while a download
+  worker is active. The worker and cleanup share a maintenance lock so they
+  cannot write/delete the same cache entry concurrently.
+- Completed media in Android MediaStore, thumbnails, other apps' files and
+  partial files for queued or paused downloads are not selected.
+- Files removed are counted and reported; an attempted cleanup is not treated
+  as successful if files cannot be deleted.
+- This does not scan or delete pending MediaStore rows left by an abrupt power
+  loss. Those require a separate verified ownership/recovery workflow.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
