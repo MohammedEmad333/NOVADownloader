@@ -66,6 +66,24 @@ final class TwitterVideo {
         return statusId(value) != null;
     }
 
+    static String pageUrlFor(String url, int index) {
+        final String id = statusId(url);
+        if (id == null || index < 0 || index >= 16)
+            throw new IllegalArgumentException("Invalid public post or video index");
+        return "https://x.com/i/status/" + id + "?nova_video=" + index;
+    }
+
+    static int selectedIndex(String url) throws IOException {
+        if (statusId(url) == null) throw new IOException("Invalid X/Twitter post URL");
+        final String index = Uri.parse(url).getQueryParameter("nova_video");
+        if (index == null) return 0;
+        if (index.length() > 2 || !index.matches("[0-9]{1,2}"))
+            throw new IOException("Invalid X video selection");
+        final int number = Integer.parseInt(index);
+        if (number >= 16) throw new IOException("X post video index out of range");
+        return number;
+    }
+
     static String statusId(String value) {
         if (value == null) return null;
         final Uri uri;
