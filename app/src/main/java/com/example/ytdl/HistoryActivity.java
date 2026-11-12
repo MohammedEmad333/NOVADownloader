@@ -26,6 +26,9 @@ import java.util.List;
 
 /** NOVA library for completed and interrupted media downloads. */
 public final class HistoryActivity extends Activity {
+    static final String EXTRA_START_IMPORT = "nova_start_video_import";
+    private static final int PICK_VIDEO = 7301;
+    private boolean importing;
     private final List<DownloadService.Task> items = new ArrayList<>();
     private HistoryAdapter adapter;
     private TextView summary;
@@ -44,6 +47,10 @@ public final class HistoryActivity extends Activity {
         DownloadService.ensureLoaded(this);
         setContentView(buildUi());
         refresh();
+        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_START_IMPORT, false)) {
+            getIntent().removeExtra(EXTRA_START_IMPORT);
+            openVideoPicker();
+        }
     }
 
     @Override
@@ -102,6 +109,17 @@ public final class HistoryActivity extends Activity {
         final LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(-1, -2);
         summaryParams.bottomMargin = Ui.dp(this, 14);
         root.addView(summary, summaryParams);
+
+        final android.widget.Button importVideo = Ui.button(this,
+                tr("＋ Import a video from your device",
+                        "＋ استيراد فيديو من جهازك"), true);
+        importVideo.setContentDescription(tr("Import a saved local video",
+                "استيراد فيديو محفوظ على الجهاز"));
+        importVideo.setOnClickListener(v -> openVideoPicker());
+        final LinearLayout.LayoutParams importParams =
+                new LinearLayout.LayoutParams(-1, Ui.dp(this, 52));
+        importParams.bottomMargin = Ui.dp(this, 12);
+        root.addView(importVideo, importParams);
 
         search = new EditText(this);
         search.setSingleLine(true);
@@ -175,6 +193,60 @@ public final class HistoryActivity extends Activity {
         });
         root.addView(list, new LinearLayout.LayoutParams(-1, 0, 1f));
         return root;
+    }
+
+    private void openVideoPicker() {
+        if (importing) return;
+        final Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        picker.setType("video/*");
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        try {
+            startActivityForResult(picker, PICK_VIDEO);
+        } catch (android.content.ActivityNotFoundException unavailable) {
+            Toast.makeText(this, tr("No file picker installed",
+                    "لا يوجد تطبيق لاختيار الملفات"), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_VIDEO || resultCode != RESULT_OK
+                || data == null || data.getData() == null || importing) return;
+        importing = true;
+        final android.net.Uri chosen = data.getData();
+        Toast.makeText(this, tr("Importing selected video…", "جاري استيراد الفيديو…"),
+                Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            android.net.Uri importedUri = null;
+            try {
+                final LocalVideoImport.Imported imported = LocalVideoImport.copy(this, chosen);
+                importedUri = imported.uri;
+                DownloadService.registerImported(this, imported);
+                runOnUiThread(() -> {
+                    importing = false;
+                    if (isFinishing() || isDestroyed()) return;
+                    Toast.makeText(this, tr("Video imported into Library",
+                            "تم استيراد الفيديو إلى المكتبة"), Toast.LENGTH_LONG).show();
+                    refresh();
+                });
+            } catch (Exception error) {
+                // If queue persistence fails after publishing, avoid an untracked
+                // duplicate in Movies/NOVA.
+                if (importedUri != null) {
+                    try { getContentResolver().delete(importedUri, null, null); }
+                    catch (RuntimeException ignored) {}
+                }
+                final String message = error.getMessage();
+                runOnUiThread(() -> {
+                    importing = false;
+                    if (isFinishing() || isDestroyed()) return;
+                    Toast.makeText(this,
+                            tr("Video import failed: ", "تعذر استيراد الفيديو: ")
+                                    + (message == null ? "" : message),
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+        }, "nova-video-import").start();
     }
 
     private Spinner selector(String[] labels) {
