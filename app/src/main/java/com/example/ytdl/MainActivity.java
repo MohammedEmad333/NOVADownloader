@@ -102,6 +102,11 @@ public class MainActivity extends Activity {
     private TextView queueSummary;
     private ArrayAdapter<String> audioAdapter;
     private Button fetchButton;
+    private String appliedLanguage;
+
+    private String tr(String english, String arabic) {
+        return NovaPreferences.text(this, english, arabic);
+    }
 
     private String pageUrl = "";
     private String videoTitle = "media";
@@ -119,6 +124,7 @@ public class MainActivity extends Activity {
         Net.ensureExtractor();
         DownloadService.ensureLoaded(this);
         Ui.applyChrome(this);
+        appliedLanguage = NovaPreferences.language(this);
         setContentView(buildUi());
         trimThumbnailCache();
         selectTab(true);
@@ -138,6 +144,12 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        // Settings may change language while MainActivity remains in the back stack.
+        if (appliedLanguage != null
+                && !appliedLanguage.equals(NovaPreferences.language(this))) {
+            recreate();
+            return;
+        }
         main.post(queuePoll);
     }
 
@@ -166,6 +178,8 @@ public class MainActivity extends Activity {
         final LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.BG);
+        root.setLayoutDirection(NovaPreferences.arabic(this)
+                ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         root.setFitsSystemWindows(true);
         root.addView(buildHeader());
         fetchPane = buildFetchPane();
@@ -217,7 +231,7 @@ public class MainActivity extends Activity {
         tp.topMargin = Ui.dp(this, 2);
         brand.addView(title, tp);
 
-        final TextView library = Ui.chip(this, "Library", Ui.TEXT);
+        final TextView library = Ui.chip(this, tr("Library", "المكتبة"), Ui.TEXT);
         library.setMinWidth(Ui.dp(this, 62));
         library.setMinHeight(Ui.dp(this, 48));
         library.setContentDescription("Open saved downloads library");
@@ -226,6 +240,17 @@ public class MainActivity extends Activity {
         library.setBackground(Ui.pressable(this, Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 15));
         library.setOnClickListener(v -> openLibrary());
         banner.addView(library);
+        final TextView settings = Ui.chip(this, "⚙", Ui.ACCENT);
+        settings.setMinHeight(Ui.dp(this, 48));
+        settings.setMinWidth(Ui.dp(this, 48));
+        settings.setContentDescription(tr("Open settings", "فتح الإعدادات"));
+        settings.setClickable(true);
+        settings.setFocusable(true);
+        settings.setBackground(Ui.pressable(this, Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 15));
+        settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        final LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
+        sp.leftMargin = Ui.dp(this, 7);
+        banner.addView(settings, sp);
         shell.addView(banner);
         return shell;
     }
@@ -241,9 +266,9 @@ public class MainActivity extends Activity {
         wrap.setPadding(Ui.dp(this, 15), Ui.dp(this, 11),
                 Ui.dp(this, 15), Ui.dp(this, 12));
         wrap.setBackground(Ui.box(this, Ui.SURFACE, Ui.LINE, 0));
-        fetchTabLabel = tabLabel("✦  Explore", true);
-        queueTabLabel = tabLabel("↓  Transfers", false);
-        libraryTabLabel = tabLabel("▣  Library", false);
+        fetchTabLabel = tabLabel(tr("✦  Explore", "✦  استكشف"), true);
+        queueTabLabel = tabLabel(tr("↓  Transfers", "↓  التنزيلات"), false);
+        libraryTabLabel = tabLabel(tr("▣  Library", "▣  المكتبة"), false);
         final LinearLayout.LayoutParams first = new LinearLayout.LayoutParams(
                 0, Ui.dp(this, 52), 1f);
         final LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(
@@ -317,8 +342,11 @@ public class MainActivity extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 8),
                 Ui.dp(this, 18), Ui.dp(this, 6));
 
-        final LinearLayout intro = Ui.section(this, "EXPLORE / 01",
-                "Find it. Save it.", "One search for the media you want to keep.");
+        final LinearLayout intro = Ui.section(this,
+                tr("EXPLORE / 01", "استكشف / ٠١"),
+                tr("Find it. Save it.", "ابحث واحفظ."),
+                tr("One search for the media you want to keep.",
+                        "ابحث أو ألصق رابطًا للوسائط التي تريد حفظها."));
         final LinearLayout.LayoutParams introParams = new LinearLayout.LayoutParams(-1, -2);
         introParams.bottomMargin = Ui.dp(this, 11);
         root.addView(intro, introParams);
@@ -347,7 +375,8 @@ public class MainActivity extends Activity {
         root.addView(sourceScroll, sourceParams);
 
         urlInput = new EditText(this);
-        urlInput.setHint("Search anything or drop a link…");
+        urlInput.setHint(tr("Search anything or drop a link…",
+                "ابحث عن عنوان أو ألصق رابطًا…"));
         urlInput.setHintTextColor(Ui.MUTED);
         urlInput.setTextColor(Ui.TEXT);
         urlInput.setTextSize(Ui.size(15));
@@ -363,9 +392,9 @@ public class MainActivity extends Activity {
 
         final LinearLayout quick = new LinearLayout(this);
         quick.setOrientation(LinearLayout.HORIZONTAL);
-        final Button paste = Ui.button(this, "Paste", false);
+        final Button paste = Ui.button(this, tr("Paste", "لصق"), false);
         paste.setOnClickListener(v -> pasteFromClipboard());
-        final Button pasteFetch = Ui.button(this, "Paste & preview", false);
+        final Button pasteFetch = Ui.button(this, tr("Paste & preview", "لصق ومعاينة"), false);
         pasteFetch.setOnClickListener(v -> pasteAndFetchFromClipboard());
         final LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, Ui.dp(this, 47), 1f);
         final LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, Ui.dp(this, 47), 1f);
@@ -376,7 +405,8 @@ public class MainActivity extends Activity {
         quickParams.topMargin = Ui.dp(this, 9);
         root.addView(quick, quickParams);
 
-        final Button toggleFilters = Ui.button(this, "Refine search   +", false);
+        final Button toggleFilters = Ui.button(this,
+                tr("Refine search   +", "تصفية البحث   +"), false);
         toggleFilters.setTextColor(Ui.MUTED);
         final LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(-1, Ui.dp(this, 48));
         toggleParams.topMargin = Ui.dp(this, 9);
@@ -393,20 +423,26 @@ public class MainActivity extends Activity {
         toggleFilters.setOnClickListener(v -> {
             final boolean open = filters.getVisibility() != View.VISIBLE;
             filters.setVisibility(open ? View.VISIBLE : View.GONE);
-            toggleFilters.setText(open ? "Refine search   −" : "Refine search   +");
+            toggleFilters.setText(open
+                    ? tr("Refine search   −", "تصفية البحث   −")
+                    : tr("Refine search   +", "تصفية البحث   +"));
         });
 
-        searchSourceSpinner = compactSpinner(new String[]{"All sources", "YouTube", "SoundCloud"});
+        searchSourceSpinner = compactSpinner(new String[]{
+                tr("All sources", "كل المصادر"), "YouTube", "SoundCloud"});
         filters.addView(searchSourceSpinner, new LinearLayout.LayoutParams(-1, Ui.dp(this, 47)));
         searchDurationSpinner = compactSpinner(new String[]{
-                "Any duration", "Under 4 min", "4–20 min", "20+ min"
+                tr("Any duration", "كل المدد"), tr("Under 4 min", "أقل من ٤ دقائق"),
+                tr("4–20 min", "٤–٢٠ دقيقة"), tr("20+ min", "أكثر من ٢٠ دقيقة")
         });
         searchDurationSpinner.setOnItemSelectedListener(searchRefreshListener());
         final LinearLayout.LayoutParams dParams = new LinearLayout.LayoutParams(-1, Ui.dp(this, 47));
         dParams.topMargin = Ui.dp(this, 7);
         filters.addView(searchDurationSpinner, dParams);
         searchSortSpinner = compactSpinner(new String[]{
-                "Relevance", "Shortest first", "Longest first"
+                tr("Relevance", "الأكثر صلة"),
+                tr("Shortest first", "الأقصر أولاً"),
+                tr("Longest first", "الأطول أولاً")
         });
         searchSortSpinner.setOnItemSelectedListener(searchRefreshListener());
         final LinearLayout.LayoutParams sParams = new LinearLayout.LayoutParams(-1, Ui.dp(this, 47));
@@ -415,9 +451,9 @@ public class MainActivity extends Activity {
 
         final LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        final Button recent = Ui.button(this, "Recent", false);
+        final Button recent = Ui.button(this, tr("Recent", "الأخيرة"), false);
         recent.setOnClickListener(v -> showRecentSearches());
-        fetchButton = Ui.button(this, "Discover media  →", true);
+        fetchButton = Ui.button(this, tr("Discover media  →", "اكتشف الوسائط  ←"), true);
         fetchButton.setOnClickListener(v -> fetch(urlInput.getText().toString().trim()));
         final LinearLayout.LayoutParams recentParams = new LinearLayout.LayoutParams(0, Ui.dp(this, 53), .8f);
         final LinearLayout.LayoutParams fetchParams = new LinearLayout.LayoutParams(0, Ui.dp(this, 53), 1.5f);
@@ -439,7 +475,8 @@ public class MainActivity extends Activity {
         root.addView(preview, imageParams);
 
         status = Ui.sans(this, 13, Ui.MUTED);
-        status.setText("Ready when you are. Pick a result to choose its format.");
+        status.setText(tr("Ready when you are. Pick a result to choose its format.",
+                "جاهز للبحث. اختر نتيجة ثم الصيغة المناسبة."));
         status.setLineSpacing(Ui.dp(this, 2), 1f);
         status.setPadding(Ui.dp(this, 13), Ui.dp(this, 12),
                 Ui.dp(this, 13), Ui.dp(this, 12));
@@ -581,8 +618,11 @@ public class MainActivity extends Activity {
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 8),
                 Ui.dp(this, 18), Ui.dp(this, 5));
 
-        final LinearLayout intro = Ui.section(this, "TRANSFERS / 02",
-                "In motion", "Every transfer, pause and retry in one place.");
+        final LinearLayout intro = Ui.section(this,
+                tr("TRANSFERS / 02", "التنزيلات / ٠٢"),
+                tr("In motion", "قيد التنزيل"),
+                tr("Every transfer, pause and retry in one place.",
+                        "تحكّم بالإيقاف والاستئناف وإعادة المحاولة."));
         final LinearLayout.LayoutParams introParams = new LinearLayout.LayoutParams(-1, -2);
         introParams.bottomMargin = Ui.dp(this, 12);
         root.addView(intro, introParams);
@@ -596,7 +636,7 @@ public class MainActivity extends Activity {
         root.addView(queueSummary, new LinearLayout.LayoutParams(-1, -2));
 
         final CheckBox wifiOnly = new CheckBox(this);
-        wifiOnly.setText("Download over Wi-Fi only");
+        wifiOnly.setText(tr("Download over Wi-Fi only", "التنزيل عبر Wi-Fi فقط"));
         wifiOnly.setTextColor(Ui.TEXT);
         wifiOnly.setTextSize(Ui.size(13));
         wifiOnly.setButtonTintList(android.content.res.ColorStateList.valueOf(Ui.ACCENT));
@@ -606,7 +646,8 @@ public class MainActivity extends Activity {
                 DownloadService.setWifiOnly(this, checked));
         root.addView(wifiOnly, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
 
-        final Button filtersToggle = Ui.button(this, "Filter & sort  +", false);
+        final Button filtersToggle = Ui.button(this,
+                tr("Filter & sort  +", "تصفية وترتيب  +"), false);
         filtersToggle.setTextColor(Ui.MUTED);
         root.addView(filtersToggle, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
 
@@ -620,15 +661,24 @@ public class MainActivity extends Activity {
         filtersToggle.setOnClickListener(v -> {
             final boolean expanded = filters.getVisibility() != View.VISIBLE;
             filters.setVisibility(expanded ? View.VISIBLE : View.GONE);
-            filtersToggle.setText(expanded ? "Filter & sort  −" : "Filter & sort  +");
+            filtersToggle.setText(expanded
+                    ? tr("Filter & sort  −", "تصفية وترتيب  −")
+                    : tr("Filter & sort  +", "تصفية وترتيب  +"));
         });
         queueFilterSpinner = compactSpinner(new String[]{
-                "All downloads", "Active", "Queued / paused", "Finished", "Failed"
+                tr("All downloads", "كل التنزيلات"),
+                tr("Active", "نشطة"),
+                tr("Queued / paused", "قيد الانتظار / متوقفة"),
+                tr("Finished", "مكتملة"),
+                tr("Failed", "فاشلة")
         });
         queueFilterSpinner.setOnItemSelectedListener(queueRefreshListener());
         filters.addView(queueFilterSpinner, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
         queueSortSpinner = compactSpinner(new String[]{
-                "Queue order", "Newest first", "Oldest first", "Progress high → low"
+                tr("Queue order", "ترتيب القائمة"),
+                tr("Newest first", "الأحدث أولاً"),
+                tr("Oldest first", "الأقدم أولاً"),
+                tr("Progress high → low", "التقدم من الأعلى إلى الأقل")
         });
         queueSortSpinner.setOnItemSelectedListener(queueRefreshListener());
         final LinearLayout.LayoutParams sortParams = new LinearLayout.LayoutParams(-1, Ui.dp(this, 48));
@@ -637,11 +687,11 @@ public class MainActivity extends Activity {
 
         final LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        final Button pauseAll = Ui.button(this, "Pause all", false);
+        final Button pauseAll = Ui.button(this, tr("Pause all", "إيقاف الكل"), false);
         pauseAll.setOnClickListener(v -> { BatchControls.pauseAll(this); refreshQueue(); });
-        final Button resumeAll = Ui.button(this, "Resume all", true);
+        final Button resumeAll = Ui.button(this, tr("Resume all", "استئناف الكل"), true);
         resumeAll.setOnClickListener(v -> { BatchControls.resumeAll(this); refreshQueue(); });
-        final Button cancelAll = Ui.button(this, "Cancel all", false);
+        final Button cancelAll = Ui.button(this, tr("Cancel all", "إلغاء الكل"), false);
         cancelAll.setTextColor(Ui.ERR);
         cancelAll.setOnClickListener(v -> {
             new android.app.AlertDialog.Builder(this)
@@ -667,7 +717,7 @@ public class MainActivity extends Activity {
 
         final LinearLayout utilities = new LinearLayout(this);
         utilities.setOrientation(LinearLayout.HORIZONTAL);
-        final Button pauseAfterCurrent = Ui.button(this, "Pause next", false);
+        final Button pauseAfterCurrent = Ui.button(this, tr("Pause next", "إيقاف التالي"), false);
         pauseAfterCurrent.setOnClickListener(v -> {
             if (DownloadService.isPauseAfterCurrentPending()) {
                 DownloadService.cancelPauseAfterCurrent(this);
@@ -679,7 +729,7 @@ public class MainActivity extends Activity {
             }
             refreshQueue();
         });
-        final Button retryFailed = Ui.button(this, "Retry failed", false);
+        final Button retryFailed = Ui.button(this, tr("Retry failed", "إعادة الفاشلة"), false);
         retryFailed.setOnClickListener(v -> {
             final int count = BatchControls.retryFailed(this);
             Toast.makeText(this, count == 0 ? "No failed downloads"
@@ -703,7 +753,8 @@ public class MainActivity extends Activity {
         list.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
         list.setVerticalScrollBarEnabled(false);
 
-        final Button clear = Ui.button(this, "Clear finished entries", false);
+        final Button clear = Ui.button(this,
+                tr("Clear finished entries", "مسح السجل المكتمل"), false);
         clear.setTextColor(Ui.MUTED);
         clear.setOnClickListener(v -> {
             new android.app.AlertDialog.Builder(this)
@@ -826,7 +877,9 @@ public class MainActivity extends Activity {
         if (fetchButton == null) return;
         fetchButton.setEnabled(!busy);
         fetchButton.setAlpha(busy ? 0.65f : 1f);
-        fetchButton.setText(busy ? "Searching the universe…" : "Discover media  →");
+        fetchButton.setText(busy
+                ? tr("Searching the universe…", "جاري البحث…")
+                : tr("Discover media  →", "اكتشف الوسائط  ←"));
     }
 
     private void resetFetch() {
@@ -1070,6 +1123,7 @@ public class MainActivity extends Activity {
                         null, null, null, "mp3", "audio/mpeg", null, true, bitrate));
             }
         }
+        prioritizeQualityOptions(true);
         formatAdapter.notifyDataSetChanged();
     }
 
@@ -1193,7 +1247,26 @@ public class MainActivity extends Activity {
                     sub.getFormat() == null ? "text/plain" : sub.getFormat().getMimeType(), null, false));
         }
         if (options.isEmpty()) status.append("\nNo directly downloadable streams found.");
+        prioritizeQualityOptions(false);
         formatAdapter.notifyDataSetChanged();
+    }
+
+    private void prioritizeQualityOptions(boolean collection) {
+        final int start = collection ? 1 : 0;
+        if (options.size() <= start) return;
+        // Stable sort: keep other formats in their original relative order and
+        // preserve the collection's choose-items action at the top.
+        options.subList(start, options.size()).sort((a, b) -> {
+            final int ap = a.mp3
+                    ? NovaPreferences.formatPriority(this, DownloadService.Kind.MP3, 0, a.mp3Kbps)
+                    : a.spec == null ? 1
+                    : NovaPreferences.formatPriority(this, a.spec.kind, a.spec.height, 0);
+            final int bp = b.mp3
+                    ? NovaPreferences.formatPriority(this, DownloadService.Kind.MP3, 0, b.mp3Kbps)
+                    : b.spec == null ? 1
+                    : NovaPreferences.formatPriority(this, b.spec.kind, b.spec.height, 0);
+            return Integer.compare(ap, bp);
+        });
     }
 
     private static String firstThumbnail(final StreamInfo info) {
@@ -1687,7 +1760,8 @@ public class MainActivity extends Activity {
 
         queueSnapshot = visible;
         if (queueTabLabel != null) {
-            queueTabLabel.setText(remaining > 0 ? "Downloads · " + remaining : "Downloads");
+            final String title = tr("↓  Transfers", "↓  التنزيلات");
+            queueTabLabel.setText(remaining > 0 ? title + " · " + remaining : title);
         }
         if (queueAdapter != null) queueAdapter.notifyDataSetChanged();
     }

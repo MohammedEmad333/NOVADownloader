@@ -9,6 +9,12 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.EditText;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
+import android.text.TextWatcher;
+import android.text.Editable;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -23,6 +29,13 @@ public final class HistoryActivity extends Activity {
     private final List<DownloadService.Task> items = new ArrayList<>();
     private HistoryAdapter adapter;
     private TextView summary;
+    private EditText search;
+    private Spinner category;
+    private Spinner sort;
+
+    private String tr(String english, String arabic) {
+        return NovaPreferences.text(this, english, arabic);
+    }
 
     @Override
     protected void onCreate(final Bundle state) {
@@ -43,6 +56,8 @@ public final class HistoryActivity extends Activity {
         final LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Ui.BG);
+        root.setLayoutDirection(NovaPreferences.arabic(this)
+                ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         root.setPadding(Ui.dp(this, 18), Ui.dp(this, 18),
                 Ui.dp(this, 18), Ui.dp(this, 10));
 
@@ -54,7 +69,7 @@ public final class HistoryActivity extends Activity {
         back.setText("←");
         back.setTextColor(Ui.ACCENT);
         back.setGravity(Gravity.CENTER);
-        back.setContentDescription("Back to Explore and Transfers");
+        back.setContentDescription(tr("Back to Explore and Transfers", "العودة للبحث والتنزيلات"));
         back.setBackground(Ui.pressable(this, Ui.SURFACE, Ui.ACCENT_SOFT, 15));
         back.setClickable(true);
         back.setFocusable(true);
@@ -62,14 +77,17 @@ public final class HistoryActivity extends Activity {
         top.addView(back, new LinearLayout.LayoutParams(
                 Ui.dp(this, 48), Ui.dp(this, 48)));
 
-        final TextView brand = Ui.eyebrow(this, "NOVA / YOUR LIBRARY");
+        final TextView brand = Ui.eyebrow(this, tr("NOVA / YOUR LIBRARY", "نوفا / مكتبتك"));
         final LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(0, -2, 1f);
         brandParams.leftMargin = Ui.dp(this, 13);
         top.addView(brand, brandParams);
         root.addView(top);
 
-        final LinearLayout heading = Ui.section(this, "LIBRARY / 03",
-                "Your collection", "Everything you've saved, with the option to open or share.");
+        final LinearLayout heading = Ui.section(this,
+                tr("LIBRARY / 03", "المكتبة / ٠٣"),
+                tr("Your collection", "مكتبتك"),
+                tr("Everything you've saved, with the option to open or share.",
+                        "كل ما حفظته في مكان واحد، جاهز للتشغيل والمشاركة."));
         final LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(-1, -2);
         headingParams.topMargin = Ui.dp(this, 18);
         headingParams.bottomMargin = Ui.dp(this, 18);
@@ -84,6 +102,54 @@ public final class HistoryActivity extends Activity {
         final LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(-1, -2);
         summaryParams.bottomMargin = Ui.dp(this, 14);
         root.addView(summary, summaryParams);
+
+        search = new EditText(this);
+        search.setSingleLine(true);
+        search.setTextColor(Ui.TEXT);
+        search.setHintTextColor(Ui.MUTED);
+        search.setTextSize(Ui.size(14));
+        search.setHint(tr("Search saved files, titles or artists",
+                "ابحث في الملفات أو العناوين أو الفنانين"));
+        search.setBackground(Ui.box(this, Ui.SURFACE_RAISED, Ui.LINE, 15));
+        search.setPadding(Ui.dp(this, 13), 0, Ui.dp(this, 13), 0);
+        final LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
+                -1, Ui.dp(this, 52));
+        searchParams.bottomMargin = Ui.dp(this, 10);
+        root.addView(search, searchParams);
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence value, int start, int before, int count) {
+                refresh();
+            }
+            @Override public void afterTextChanged(Editable value) {}
+        });
+
+        final LinearLayout tools = new LinearLayout(this);
+        tools.setOrientation(LinearLayout.HORIZONTAL);
+        category = selector(new String[]{
+                tr("All files", "الكل"), tr("Videos", "فيديو"),
+                tr("Audio", "صوت"), tr("Subtitles", "ترجمة"),
+                tr("Needs attention", "تحتاج متابعة")
+        });
+        sort = selector(new String[]{
+                tr("Newest first", "الأحدث أولاً"), tr("Oldest first", "الأقدم أولاً"),
+                tr("By title", "حسب العنوان")
+        });
+        tools.addView(category, new LinearLayout.LayoutParams(0, Ui.dp(this, 49), 1.1f));
+        final LinearLayout.LayoutParams sortParams = new LinearLayout.LayoutParams(
+                0, Ui.dp(this, 49), 1f);
+        sortParams.leftMargin = Ui.dp(this, 7);
+        tools.addView(sort, sortParams);
+        final LinearLayout.LayoutParams toolParams = new LinearLayout.LayoutParams(-1, -2);
+        toolParams.bottomMargin = Ui.dp(this, 12);
+        root.addView(tools, toolParams);
+        final AdapterView.OnItemSelectedListener changed = new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view,
+                                                  int position, long id) { refresh(); }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        };
+        category.setOnItemSelectedListener(changed);
+        sort.setOnItemSelectedListener(changed);
 
         final ListView list = new ListView(this);
         adapter = new HistoryAdapter();
@@ -100,7 +166,8 @@ public final class HistoryActivity extends Activity {
             if (task.state == DownloadService.State.FAILED
                     || task.state == DownloadService.State.CANCELLED) {
                 DownloadService.retry(this, task);
-                Toast.makeText(this, "Added back to Transfers", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, tr("Added back to Transfers", "أضيف إلى التنزيلات مجددًا"),
+                        Toast.LENGTH_SHORT).show();
                 finish();
             } else if (task.state == DownloadService.State.DONE && task.outputUri != null) {
                 openSaved(task);
@@ -110,22 +177,35 @@ public final class HistoryActivity extends Activity {
         return root;
     }
 
+    private Spinner selector(String[] labels) {
+        final Spinner control = new Spinner(this);
+        final ArrayAdapter<String> values = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        values.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        control.setAdapter(values);
+        control.setBackground(Ui.box(this, Ui.SURFACE_RAISED, Ui.LINE, 14));
+        return control;
+    }
+
     private void refresh() {
-        items.clear();
         final List<DownloadService.Task> all = DownloadService.snapshot();
-        Collections.reverse(all);
         int saved = 0;
         int failed = 0;
         for (final DownloadService.Task task : all) {
-            if (task.state.finished()) {
-                items.add(task);
-                if (task.state == DownloadService.State.DONE) saved++;
-                if (task.state == DownloadService.State.FAILED) failed++;
-            }
+            if (task.state == DownloadService.State.DONE) saved++;
+            if (task.state == DownloadService.State.FAILED) failed++;
         }
+        final List<DownloadService.Task> visible = LibraryFilter.select(all,
+                search == null ? "" : search.getText().toString(),
+                category == null ? 0 : category.getSelectedItemPosition(),
+                sort == null ? 0 : sort.getSelectedItemPosition());
+        items.clear();
+        items.addAll(visible);
         if (summary != null) {
-            summary.setText("✦  " + saved + " saved    ·    " + failed
-                    + " need attention\n" + items.size() + " items in your library");
+            summary.setText(tr("✦  " + saved + " saved    ·    " + failed
+                            + " need attention\n" + items.size() + " visible items",
+                    "✦  " + saved + " محفوظ    ·    " + failed
+                            + " تحتاج متابعة\n" + items.size() + " عناصر ظاهرة"));
         }
         if (adapter != null) adapter.notifyDataSetChanged();
     }
@@ -178,8 +258,10 @@ public final class HistoryActivity extends Activity {
         @Override
         public View getView(final int position, final View convertView, final ViewGroup parent) {
             if (items.isEmpty()) {
-                final LinearLayout empty = Ui.section(HistoryActivity.this, "YOUR SPACE",
-                        "A blank canvas", "The things you download will live here.");
+                final LinearLayout empty = Ui.section(HistoryActivity.this,
+                        tr("YOUR SPACE", "مساحتك"),
+                        tr("Nothing matches yet", "لا توجد نتائج"),
+                        tr("Try another search or category.", "جرّب البحث بكلمات أخرى أو غيّر التصنيف."));
                 empty.setPadding(Ui.dp(HistoryActivity.this, 18),
                         Ui.dp(HistoryActivity.this, 26), Ui.dp(HistoryActivity.this, 18),
                         Ui.dp(HistoryActivity.this, 26));
@@ -198,7 +280,7 @@ public final class HistoryActivity extends Activity {
             heading.setOrientation(LinearLayout.HORIZONTAL);
             heading.setGravity(Gravity.CENTER_VERTICAL);
             final TextView title = Ui.headline(HistoryActivity.this, 15);
-            title.setText(task.title == null ? "Untitled download" : task.title);
+            title.setText(task.title == null ? tr("Untitled download", "تنزيل بلا عنوان") : task.title);
             title.setMaxLines(2);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             heading.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -213,7 +295,8 @@ public final class HistoryActivity extends Activity {
 
             final TextView detail = Ui.sans(HistoryActivity.this, 12, Ui.MUTED);
             detail.setText(task.formatLabel()
-                    + (task.state == DownloadService.State.FAILED ? " · Tap to retry" : ""));
+                    + (task.state == DownloadService.State.FAILED
+                    ? tr(" · Tap to retry", " · اضغط لإعادة المحاولة") : ""));
             final LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(-1, -2);
             detailParams.topMargin = Ui.dp(HistoryActivity.this, 8);
             card.addView(detail, detailParams);
@@ -222,8 +305,8 @@ public final class HistoryActivity extends Activity {
                 final LinearLayout actions = new LinearLayout(HistoryActivity.this);
                 actions.setOrientation(LinearLayout.HORIZONTAL);
                 actions.setPadding(0, Ui.dp(HistoryActivity.this, 12), 0, 0);
-                actions.addView(action("Open file", Ui.OK, v -> openSaved(task)));
-                actions.addView(action("Share", Ui.ACCENT, v -> shareSaved(task)));
+                actions.addView(action(tr("Open file", "فتح"), Ui.OK, v -> openSaved(task)));
+                actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT, v -> shareSaved(task)));
                 card.addView(actions);
             }
             final LinearLayout wrap = new LinearLayout(HistoryActivity.this);

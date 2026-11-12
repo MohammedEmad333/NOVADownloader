@@ -34,6 +34,20 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   high-contrast dark colors, scrollable source chips and a matching adaptive icon.
 - The existing download engine and queue persistence remain unchanged by the redesign.
 
+## NOVA 1.2: preferences and smarter library
+
+- **Settings (gear icon):** change the app's primary interface language between Arabic,
+  English, and the device language. Main navigation, search/transfer controls, Library,
+  and Settings are bilingual; some detailed extraction/error descriptions remain English.
+- **Preferred quality:** choose a default video resolution (360p to 2160p) and MP3 bitrate
+  (128, 192 or 320 kbps). When that format exists, it appears first; unavailable
+  qualities are never fabricated or downloaded automatically.
+- **Network:** the same Wi-Fi-only restriction can now be changed in Settings.
+- **Library:** search saved media by title, artist or format, filter by video/audio/
+  subtitles/failed items, and sort by newest, oldest or title.
+- Preferences stay on the device and do not need an account or internet connection.
+- Existing queued tasks and saved files are retained when upgrading.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
