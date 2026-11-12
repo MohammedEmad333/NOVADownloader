@@ -973,6 +973,19 @@ public class DownloadService extends Service {
         task.state = State.RESOLVING;
         update(task);
 
+        if (TwitterVideo.isPostUrl(task.pageUrl)) {
+            final TwitterVideo.Post post = TwitterVideo.fetch(task.pageUrl);
+            final int index = TwitterVideo.selectedIndex(task.pageUrl);
+            if (index >= post.videos.size()) {
+                throw new IOException("Selected X video is no longer available");
+            }
+            final TwitterVideo.Video video = post.videos.get(index);
+            task.preResolve(video.url, null, "mp4", "video/mp4");
+            task.title = Streams.sanitize(post.title
+                    + (post.videos.size() > 1 ? " - Video " + (index + 1) : ""));
+            return;
+        }
+
         Net.ensureExtractor();
         final StreamInfo info = StreamInfo.getInfo(serviceFor(task.pageUrl), task.pageUrl);
         if (task.spec.kind != Kind.MP3 || task.title == null || task.title.trim().isEmpty()) {
