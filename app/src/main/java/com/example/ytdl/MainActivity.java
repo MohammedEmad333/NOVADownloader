@@ -336,9 +336,15 @@ public class MainActivity extends Activity {
         final LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-2, -2);
         sp.leftMargin = Ui.dp(this, 7);
         sources.addView(spotify, sp);
+        // Keep source chips usable even on narrow phones and with large accessibility text.
+        final android.widget.HorizontalScrollView sourceScroll =
+                new android.widget.HorizontalScrollView(this);
+        sourceScroll.setHorizontalScrollBarEnabled(false);
+        sourceScroll.setFillViewport(false);
+        sourceScroll.addView(sources);
         final LinearLayout.LayoutParams sourceParams = new LinearLayout.LayoutParams(-1, -2);
         sourceParams.bottomMargin = Ui.dp(this, 11);
-        root.addView(sources, sourceParams);
+        root.addView(sourceScroll, sourceParams);
 
         urlInput = new EditText(this);
         urlInput.setHint("Search anything or drop a link…");
