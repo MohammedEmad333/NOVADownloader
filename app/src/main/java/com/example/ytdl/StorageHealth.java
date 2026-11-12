@@ -61,8 +61,8 @@ final class StorageHealth {
 
     static Report inspect(Context context) {
         DownloadService.ensureLoaded(context);
-        final File external = context.getExternalFilesDir(null);
-        final File location = external != null ? external : context.getCacheDir();
+        // Report free space for the same filesystem that holds resumable temp files.
+        final File location = context.getCacheDir();
         long freeBytes = -1;
         try {
             freeBytes = new StatFs(location.getAbsolutePath()).getAvailableBytes();
