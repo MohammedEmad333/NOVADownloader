@@ -326,7 +326,8 @@ public class DownloadService extends Service {
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
 
     /** Maintenance must not delete task files while transfers can start or run. */
-    static final Object CACHE_MAINTENANCE_LOCK = new Object();
+    static final java.util.concurrent.locks.ReentrantLock CACHE_MAINTENANCE_LOCK =
+            new java.util.concurrent.locks.ReentrantLock();
     static boolean isWorkerRunning() { return RUNNING.get(); }
     private static final AtomicBoolean PAUSE_AFTER_CURRENT = new AtomicBoolean(false);
 
@@ -788,8 +789,11 @@ public class DownloadService extends Service {
             while ((task = nextQueued()) != null) {
                 // The maintenance lock covers selecting a transfer and processing it.
                 // A manual cleanup cannot overlap any write to a task temp file.
-                synchronized (CACHE_MAINTENANCE_LOCK) {
+                CACHE_MAINTENANCE_LOCK.lock();
+                try {
                     process(task);
+                } finally {
+                    CACHE_MAINTENANCE_LOCK.unlock();
                 }
                 if (PAUSE_AFTER_CURRENT.getAndSet(false)) {
                     getSharedPreferences(PREFS, MODE_PRIVATE)
