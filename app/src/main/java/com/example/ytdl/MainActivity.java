@@ -1123,6 +1123,7 @@ public class MainActivity extends Activity {
                         null, null, null, "mp3", "audio/mpeg", null, true, bitrate));
             }
         }
+        prioritizeQualityOptions(true);
         formatAdapter.notifyDataSetChanged();
     }
 
@@ -1246,7 +1247,26 @@ public class MainActivity extends Activity {
                     sub.getFormat() == null ? "text/plain" : sub.getFormat().getMimeType(), null, false));
         }
         if (options.isEmpty()) status.append("\nNo directly downloadable streams found.");
+        prioritizeQualityOptions(false);
         formatAdapter.notifyDataSetChanged();
+    }
+
+    private void prioritizeQualityOptions(boolean collection) {
+        final int start = collection ? 1 : 0;
+        if (options.size() <= start) return;
+        // Stable sort: keep other formats in their original relative order and
+        // preserve the collection's choose-items action at the top.
+        options.subList(start, options.size()).sort((a, b) -> {
+            final int ap = a.mp3
+                    ? NovaPreferences.formatPriority(this, DownloadService.Kind.MP3, 0, a.mp3Kbps)
+                    : a.spec == null ? 1
+                    : NovaPreferences.formatPriority(this, a.spec.kind, a.spec.height, 0);
+            final int bp = b.mp3
+                    ? NovaPreferences.formatPriority(this, DownloadService.Kind.MP3, 0, b.mp3Kbps)
+                    : b.spec == null ? 1
+                    : NovaPreferences.formatPriority(this, b.spec.kind, b.spec.height, 0);
+            return Integer.compare(ap, bp);
+        });
     }
 
     private static String firstThumbnail(final StreamInfo info) {
