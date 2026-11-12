@@ -1,5 +1,10 @@
 package com.example.ytdl;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -43,6 +48,56 @@ public final class TwitterVideoTest {
         assertFalse(TwitterVideo.isPostUrl("https://x.com@evil.example/person/status/" + ID));
         assertFalse(TwitterVideo.isPostUrl("https://x.com/person"));
         assertFalse(TwitterVideo.isPostUrl("https://x.com/person/status/not-a-number"));
+    }
+
+    @Test public void acceptsPublicVideoSuffixWithoutFollowingExtraPaths() {
+        assertEquals(ID, TwitterVideo.statusId(
+                "https://x.com/person/status/" + ID + "/video/1"));
+        assertEquals(ID, TwitterVideo.statusId(
+                "https://www.twitter.com/person/status/" + ID + "/video/16?s=20"));
+        assertNull(TwitterVideo.statusId(
+                "https://x.com/person/status/" + ID + "/video/0"));
+        assertNull(TwitterVideo.statusId(
+                "https://x.com/person/status/" + ID + "/video/17"));
+        assertNull(TwitterVideo.statusId(
+                "https://x.com/person/status/" + ID + "/video/1/extra"));
+        assertNull(TwitterVideo.statusId(
+                "https://x.com/person/status/" + ID + "/anything/1"));
+        assertNull(TwitterVideo.statusId(
+                "https://x.com/person/status/" + ID + "/video/abc"));
+    }
+
+    @Test public void metadataBodyReadRejectsUnknownLengthOversizedStreams()
+            throws Exception {
+        final int limit = 8192;
+        final byte[] oversized = new byte[limit + 4000];
+        try {
+            TwitterVideo.readBounded(new ByteArrayInputStream(oversized), limit);
+            fail("Unbounded public metadata accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("too large"));
+        }
+    }
+
+    @Test public void metadataBodyReadAllowsExactlyTheLimit() throws Exception {
+        final byte[] json = "{}".getBytes(StandardCharsets.UTF_8);
+        assertArrayEquals(json,
+                TwitterVideo.readBounded(new ByteArrayInputStream(json), json.length));
+    }
+
+    @Test public void metadataBodyReadHandlesOneByteAtATime() throws Exception {
+        final byte[] expected = "short-metadata".getBytes(StandardCharsets.UTF_8);
+        final InputStream tiny = new ByteArrayInputStream(expected) {
+            @Override public synchronized int read(byte[] dst, int start, int length) {
+                return super.read(dst, start, Math.min(length, 1));
+            }
+        };
+        assertArrayEquals(expected, TwitterVideo.readBounded(tiny, 100));
+    }
+
+    @Test public void sharedTextRecognizesVideoSuffixLinks() {
+        final String link = "https://x.com/person/status/" + ID + "/video/1";
+        assertEquals(link, LinkParser.firstSupportedMediaLink("See " + link + "."));
     }
 
     @Test public void choosesPublicMp4AndIgnoresHls() throws Exception {
