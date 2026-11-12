@@ -75,8 +75,7 @@ final class TwitterHls {
     }
 
     static boolean safeSegment(String value) {
-        if (!TwitterVideo.isSafeCdnFile(value, ".ts")) return false;
-        return true;
+        return TwitterVideo.isSafeCdnFile(value, ".ts");
     }
 
     static String resolve(String base, String relative) throws IOException {
@@ -142,7 +141,9 @@ final class TwitterHls {
             if (line.startsWith("#EXT-X-KEY") || line.startsWith("#EXT-X-SESSION-KEY")
                     || line.startsWith("#EXT-X-MAP") || line.startsWith("#EXT-X-BYTERANGE")
                     || line.startsWith("#EXT-X-DISCONTINUITY")
-                    || line.startsWith("#EXT-X-I-FRAMES-ONLY")) {
+                    || line.startsWith("#EXT-X-I-FRAMES-ONLY")
+                    || line.startsWith("#EXT-X-PART")
+                    || line.startsWith("#EXT-X-GAP")) {
                 throw new IOException("Encrypted, ranged, fragmented or discontinuous HLS is not supported");
             }
             if (line.startsWith("#EXT-X-STREAM-INF")) {
@@ -275,6 +276,9 @@ final class TwitterHls {
                     ensureSpace(part, read);
                     out.write(buffer, 0, read);
                 }
+            }
+            if (target.exists() && !target.delete()) {
+                throw new IOException("Cannot replace invalid HLS segment");
             }
             if (written == 0 || !part.renameTo(target)) {
                 throw new IOException("Could not finalize HLS segment");
