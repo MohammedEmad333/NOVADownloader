@@ -51,6 +51,16 @@ public final class LocalVideoImportTest {
         if (node instanceof TextView && text.contentEquals(((TextView) node).getText())) {
             return node;
         }
+        // Explore controls live inside the ListView's non-selectable header, which
+        // Robolectric may keep in the adapter until a real layout pass occurs.
+        if (node instanceof android.widget.ListView) {
+            final android.widget.ListView list = (android.widget.ListView) node;
+            for (int i = 0; i < list.getHeaderViewsCount(); i++) {
+                final View header = list.getAdapter().getView(i, null, list);
+                final View found = findText(header, text);
+                if (found != null) return found;
+            }
+        }
         if (node instanceof ViewGroup) {
             final ViewGroup group = (ViewGroup) node;
             for (int i = 0; i < group.getChildCount(); i++) {
