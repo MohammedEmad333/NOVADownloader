@@ -115,6 +115,82 @@ public final class SettingsActivity extends Activity {
                 DownloadService.setWifiOnly(this, checked));
         root.addView(wifi, row());
 
+        addLabel(root, text("DOWNLOAD SCHEDULE", "جدولة التنزيلات"),
+                text("Optional daily time window and charging requirement.",
+                        "اختَر وقتًا يوميًا محددًا أو اشترط توصيل الشاحن."));
+        final CheckBox charging = new CheckBox(this);
+        charging.setText(text("Only download while charging", "التنزيل أثناء الشحن فقط"));
+        charging.setTextColor(Ui.TEXT);
+        charging.setButtonTintList(ColorStateList.valueOf(Ui.ACCENT));
+        charging.setMinHeight(Ui.dp(this, 52));
+        charging.setChecked(DownloadSchedule.chargingOnly(this));
+        charging.setOnCheckedChangeListener((button, checked) ->
+                DownloadSchedule.setChargingOnly(this, checked));
+        root.addView(charging, row());
+
+        final CheckBox daily = new CheckBox(this);
+        daily.setText(text("Limit downloads to a daily time window",
+                "السماح بالتنزيل خلال فترة يومية"));
+        daily.setTextColor(Ui.TEXT);
+        daily.setButtonTintList(ColorStateList.valueOf(Ui.ACCENT));
+        daily.setChecked(DownloadSchedule.windowEnabled(this));
+        daily.setMinHeight(Ui.dp(this, 52));
+        root.addView(daily, row());
+
+        final String[] hours = new String[24];
+        for (int i = 0; i < hours.length; i++) {
+            hours[i] = String.format(java.util.Locale.US, "%02d:00", i);
+        }
+        final Spinner start = spinner(hours);
+        final Spinner end = spinner(hours);
+        start.setSelection(DownloadSchedule.windowStart(this) / 60);
+        end.setSelection(DownloadSchedule.windowEnd(this) / 60);
+        final LinearLayout times = new LinearLayout(this);
+        times.setOrientation(LinearLayout.HORIZONTAL);
+        final LinearLayout.LayoutParams fromParams =
+                new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f);
+        final LinearLayout.LayoutParams toParams =
+                new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f);
+        toParams.leftMargin = Ui.dp(this, 8);
+        times.addView(start, fromParams);
+        times.addView(end, toParams);
+        root.addView(times);
+        start.setEnabled(daily.isChecked());
+        end.setEnabled(daily.isChecked());
+
+        final Runnable saveSchedule = () -> {
+            final boolean enabled = daily.isChecked();
+            final int from = start.getSelectedItemPosition() * 60;
+            final int to = end.getSelectedItemPosition() * 60;
+            if (enabled && from == to) {
+                android.widget.Toast.makeText(this,
+                        text("Choose different start and end hours.",
+                                "اختر ساعة بداية ونهاية مختلفتين."),
+                        android.widget.Toast.LENGTH_SHORT).show();
+                // Keep the previously saved valid schedule.
+                return;
+            }
+            DownloadSchedule.setWindow(this, enabled, from, to);
+        };
+        final AdapterView.OnItemSelectedListener timeChanged = new Selected() {
+            @Override public void selected(int position) { saveSchedule.run(); }
+        };
+        start.setOnItemSelectedListener(timeChanged);
+        end.setOnItemSelectedListener(timeChanged);
+        daily.setOnCheckedChangeListener((button, enabled) -> {
+            start.setEnabled(enabled);
+            end.setEnabled(enabled);
+            saveSchedule.run();
+        });
+        final TextView scheduleNote = Ui.sans(this, 12, Ui.MUTED);
+        scheduleNote.setText(text(
+                "Choose start and end hours (device local time). The end may be next day. "
+                        + "Android may delay reminders: open NOVA when notified to start queued transfers.",
+                "اختر ساعة البداية والنهاية حسب توقيت الجهاز. يمكن أن تمتد الفترة لليوم التالي. "
+                        + "قد يؤخر Android التذكير؛ افتح NOVA عند الإشعار لبدء المهام المنتظرة."));
+        scheduleNote.setPadding(0, Ui.dp(this, 8), 0, 0);
+        root.addView(scheduleNote);
+
         addLabel(root, text("STORAGE & RECOVERY", "التخزين والاستعادة"),
                 text("Check disk space and find safe-to-remove temporary files.",
                         "افحص المساحة والملفات المؤقتة الآمنة للتنظيف."));
