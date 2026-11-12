@@ -88,6 +88,15 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   The workflow uploads a signed APK artifact but does not publish a public release.
   A debug APK remains available from the normal build workflow.
 
+## NOVA 1.4.1: responsive storage recovery
+
+- Safe cleanup now **returns immediately** if a transfer owns the cache-maintenance lock.
+  Previously the operation could wait until a large download completed even though
+  cleanup was meant to be unavailable while a transfer was running.
+- Lock ownership, current worker status and queued-task protection are rechecked before
+  deletion. Tests cover a busy lock owned by a different thread and a running worker.
+- The download service, existing resume files and saved media remain unchanged.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
