@@ -77,6 +77,57 @@ public final class StorageHealthTest {
         assertTrue(waiting.exists());
     }
 
+    @Test public void cleanupDoesNotWaitForLongRunningWorkerLock() throws Exception {
+        final File orphan = candidate("v-80.part", true);
+        final java.util.concurrent.locks.ReentrantLock lock =
+                new java.util.concurrent.locks.ReentrantLock();
+        final java.util.concurrent.CountDownLatch acquired =
+                new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release =
+                new java.util.concurrent.CountDownLatch(1);
+        final Thread worker = new Thread(() -> {
+            lock.lock();
+            try {
+                acquired.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+            } finally {
+                lock.unlock();
+            }
+        }, "test-long-transfer");
+        worker.start();
+        try {
+            assertTrue(acquired.await(5, java.util.concurrent.TimeUnit.SECONDS));
+            final long started = System.nanoTime();
+            final StorageHealth.Cleanup cleanup = StorageHealth.cleanupWithLock(
+                    folder.getRoot(), () -> false, lock);
+            final long elapsed = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
+                    System.nanoTime() - started);
+            assertTrue("Cleanup should not wait behind a transfer", elapsed < 1500);
+            assertTrue(cleanup.blockedByTransfer);
+            assertEquals(0, cleanup.filesRemoved);
+            assertTrue(orphan.exists());
+        } finally {
+            release.countDown();
+            worker.join(5000);
+        }
+        assertFalse(worker.isAlive());
+    }
+
+    @Test public void cleanupRefusesEvenIfLockIsFreeButWorkerIsRunning() throws Exception {
+        final File orphan = candidate("v-81.part", true);
+        final java.util.concurrent.locks.ReentrantLock lock =
+                new java.util.concurrent.locks.ReentrantLock();
+        final StorageHealth.Cleanup cleanup = StorageHealth.cleanupWithLock(
+                folder.getRoot(), () -> true, lock);
+        assertTrue(cleanup.blockedByTransfer);
+        assertTrue(orphan.exists());
+        assertFalse(lock.isLocked());
+    }
+
     @Test public void activeWorkerPreventsAnyDeletion() throws Exception {
         File orphan = candidate("v-20.part", true);
         StorageHealth.Cleanup result = StorageHealth.cleanup(folder.getRoot(),
