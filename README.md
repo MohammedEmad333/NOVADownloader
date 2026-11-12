@@ -1,6 +1,6 @@
-# Aurora Downloader — Android / Java
+# NOVA Downloader — Android / Java
 
-A personal-use Android media downloader built with Java and NewPipeExtractor.
+NOVA is a redesigned, native Android media downloader built with Java and NewPipeExtractor.
 
 Supported input includes YouTube, SoundCloud, and public Spotify links. Spotify support
 uses public track/album/playlist metadata to find a matching YouTube source; it does **not**
@@ -22,6 +22,17 @@ with copyright law and the terms and policies of the services you access.
 This project is not affiliated with, endorsed by, or sponsored by YouTube, Google, Spotify,
 or SoundCloud. Their names and trademarks belong to their respective owners.
 
+
+## NOVA interface
+
+- **Explore:** prominent search and link entry, source chips, optional advanced filters,
+  media previews and quality choices.
+- **Transfers:** live progress, Wi-Fi-only mode, queue ordering, pause/resume, retry and
+  cancellation controls.
+- **Library:** completed and failed items with open/share/retry actions.
+- Persistent three-destination bottom navigation, accessible 48 dp touch targets,
+  high-contrast dark colors, scrollable source chips and a matching adaptive icon.
+- The existing download engine and queue persistence remain unchanged by the redesign.
 
 ## Getting the APK
 
