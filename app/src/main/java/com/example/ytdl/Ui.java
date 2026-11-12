@@ -10,44 +10,37 @@ import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListView;
-import android.widget.Spinner;
 import android.widget.TextView;
 
-import java.util.WeakHashMap;
+import java.util.Locale;
 
-/** Central visual system shared by every screen. */
+/**
+ * AURORA design system. Native Android, no WebView or external UI dependencies.
+ * Surfaces, spacing, typography, states and touch targets are shared by every screen.
+ */
 public final class Ui {
+    public static final int BG = Color.parseColor("#0B1017");
+    public static final int SURFACE = Color.parseColor("#141D28");
+    public static final int SURFACE_RAISED = Color.parseColor("#1B2835");
+    public static final int LINE = Color.parseColor("#2C3B4A");
+    public static final int TEXT = Color.parseColor("#F3F7FA");
+    public static final int MUTED = Color.parseColor("#9FB0BF");
+    public static final int ACCENT = Color.parseColor("#C5F277");
+    public static final int ACCENT_SOFT = Color.parseColor("#293C2D");
+    public static final int OK = Color.parseColor("#7FE0B3");
+    public static final int ERR = Color.parseColor("#FF8C95");
+    public static final int WARNING = Color.parseColor("#F8C77B");
 
-    public static final int BG = Color.parseColor("#090D13");
-    public static final int SURFACE = Color.parseColor("#121922");
-    public static final int SURFACE_RAISED = Color.parseColor("#18222E");
-    public static final int LINE = Color.parseColor("#263445");
-    public static final int TEXT = Color.parseColor("#F4F7FB");
-    public static final int MUTED = Color.parseColor("#98A6B8");
-
-    public static final int ACCENT = Color.parseColor("#70A7FF");
-    public static final int ACCENT_SOFT = Color.parseColor("#1A2A40");
-    public static final int OK = Color.parseColor("#62C995");
-    public static final int ERR = Color.parseColor("#FF7474");
-
-    public static final float TYPE_SCALE = 1.10f;
-
-    private static final float MIN_RADIUS_DP = 12f;
-    private static final WeakHashMap<Activity, Boolean> POLISHED = new WeakHashMap<>();
+    public static final float TYPE_SCALE = 1f;
+    public static final int SPACE = 16;
+    private Ui() {}
 
     public static float size(final float baseSp) {
         return baseSp * TYPE_SCALE;
     }
-
-    private Ui() {}
 
     public static int dp(final Context context, final float value) {
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
@@ -61,60 +54,127 @@ public final class Ui {
 
     public static GradientDrawable box(final Context context, final int fill,
                                        final int stroke, final float radiusDp) {
-        final GradientDrawable d = new GradientDrawable();
-        d.setColor(fill);
-        d.setCornerRadius(dp(context, Math.max(radiusDp, MIN_RADIUS_DP)));
+        final GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.RECTANGLE);
+        background.setColor(fill);
+        background.setCornerRadius(dp(context, Math.max(0, radiusDp)));
         if (stroke != Color.TRANSPARENT) {
-            d.setStroke(Math.max(1, dp(context, 1f)), stroke);
+            background.setStroke(Math.max(1, dp(context, 1)), stroke);
         }
-        return d;
+        return background;
+    }
+
+    public static GradientDrawable hero(final Context context) {
+        final GradientDrawable background = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{Color.parseColor("#274536"), Color.parseColor("#1B3035"), SURFACE});
+        background.setCornerRadius(dp(context, 26));
+        background.setStroke(dp(context, 1), Color.parseColor("#4C6754"));
+        return background;
     }
 
     public static StateListDrawable pressable(final Context context, final int resting,
                                               final int pressed, final float radiusDp) {
         final StateListDrawable states = new StateListDrawable();
-        states.addState(new int[]{android.R.attr.state_pressed}, box(context, pressed, LINE, radiusDp));
-        states.addState(new int[]{android.R.attr.state_focused}, box(context, SURFACE_RAISED, ACCENT, radiusDp));
-        states.addState(new int[]{}, box(context, resting, LINE, radiusDp));
+        states.addState(new int[]{android.R.attr.state_pressed},
+                box(context, pressed, resting == ACCENT ? Color.TRANSPARENT : LINE, radiusDp));
+        states.addState(new int[]{android.R.attr.state_focused},
+                box(context, SURFACE_RAISED, ACCENT, radiusDp));
+        states.addState(new int[]{}, box(context, resting,
+                resting == ACCENT ? Color.TRANSPARENT : LINE, radiusDp));
         return states;
     }
 
     public static TextView mono(final Context context, final float sizeSp, final int color) {
-        final TextView t = new TextView(context);
-        t.setTypeface(Typeface.MONOSPACE);
-        t.setTextSize(size(sizeSp));
-        t.setTextColor(color);
-        t.setIncludeFontPadding(false);
-        return t;
+        final TextView text = new TextView(context);
+        text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        text.setTextSize(size(sizeSp));
+        text.setTextColor(color);
+        text.setIncludeFontPadding(false);
+        return text;
     }
 
     public static TextView sans(final Context context, final float sizeSp, final int color) {
-        final TextView t = new TextView(context);
-        t.setTextSize(size(sizeSp));
-        t.setTextColor(color);
-        t.setIncludeFontPadding(false);
-        return t;
+        final TextView text = new TextView(context);
+        text.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        text.setTextSize(size(sizeSp));
+        text.setTextColor(color);
+        text.setIncludeFontPadding(false);
+        return text;
     }
 
-    public static void polishActivity(final Activity activity) {
-        if (activity == null || POLISHED.containsKey(activity)) return;
-        if (!(activity instanceof MainActivity) && !(activity instanceof HistoryActivity)) return;
-        POLISHED.put(activity, Boolean.TRUE);
-        polishSystemChrome(activity);
-        final View content = activity.findViewById(android.R.id.content);
-        if (!(content instanceof ViewGroup)) return;
-        ((ViewGroup) content).post(() -> {
-            if (activity instanceof MainActivity) polishMain(activity, (ViewGroup) content);
-            else polishHistory(activity, (ViewGroup) content);
-        });
+    public static TextView headline(final Context context, final float sizeSp) {
+        final TextView text = sans(context, sizeSp, TEXT);
+        text.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        text.setLetterSpacing(-0.025f);
+        return text;
     }
 
-    private static void polishSystemChrome(final Activity activity) {
+    public static TextView overline(final Context context, final String label) {
+        final TextView text = mono(context, 11, ACCENT);
+        text.setText(label.toUpperCase(Locale.US));
+        text.setLetterSpacing(.16f);
+        return text;
+    }
+
+    public static Button button(final Context context, final String label, final boolean primary) {
+        final Button button = new Button(context);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(size(14));
+        button.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        button.setTextColor(primary ? BG : TEXT);
+        button.setMinHeight(dp(context, 48));
+        button.setMinimumWidth(dp(context, 48));
+        button.setPadding(dp(context, 13), 0, dp(context, 13), 0);
+        button.setStateListAnimator(null);
+        button.setBackground(pressable(context, primary ? ACCENT : SURFACE_RAISED,
+                primary ? Color.parseColor("#B0E15E") : ACCENT_SOFT, 15));
+        return button;
+    }
+
+    public static TextView chip(final Context context, final String label, final int accentColor) {
+        final TextView text = mono(context, 11, accentColor);
+        text.setText(label);
+        text.setGravity(Gravity.CENTER);
+        text.setMinHeight(dp(context, 32));
+        text.setPadding(dp(context, 11), dp(context, 5),
+                dp(context, 11), dp(context, 5));
+        text.setBackground(box(context, SURFACE_RAISED, LINE, 12));
+        return text;
+    }
+
+    public static LinearLayout section(final Context context, final String eyebrow,
+                                       final String title, final String subtitle) {
+        final LinearLayout root = new LinearLayout(context);
+        root.setOrientation(LinearLayout.VERTICAL);
+        final TextView upper = overline(context, eyebrow);
+        root.addView(upper);
+        final TextView heading = headline(context, 22);
+        heading.setText(title);
+        final LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+                -1, -2);
+        hp.topMargin = dp(context, 5);
+        root.addView(heading, hp);
+        if (subtitle != null && !subtitle.isEmpty()) {
+            final TextView detail = sans(context, 13, MUTED);
+            detail.setText(subtitle);
+            detail.setLineSpacing(dp(context, 2), 1f);
+            final LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
+            sp.topMargin = dp(context, 6);
+            root.addView(detail, sp);
+        }
+        return root;
+    }
+
+    public static void applyChrome(final Activity activity) {
+        if (activity == null) return;
         final Window window = activity.getWindow();
         if (window == null) return;
         window.setStatusBarColor(BG);
         window.setNavigationBarColor(BG);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // White system icons on the dark canvas.
             window.getDecorView().setSystemUiVisibility(0);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -122,337 +182,14 @@ public final class Ui {
         }
     }
 
-    private static boolean narrow(final Context context) {
-        final float density = context.getResources().getDisplayMetrics().density;
-        final int widthDp = Math.round(context.getResources().getDisplayMetrics().widthPixels / density);
-        return widthDp < 390;
-    }
-
-    private static void polishMain(final Activity activity, final ViewGroup content) {
-        final View rootView = firstChild(content);
-        if (!(rootView instanceof LinearLayout)) return;
-        final LinearLayout root = (LinearLayout) rootView;
-        if (root.getChildCount() < 3) return;
-
-        replaceMainHeader(activity, root);
-        polishTabs(activity, root.getChildAt(1));
-
-        final View pagerView = root.getChildAt(2);
-        if (!(pagerView instanceof FrameLayout)) return;
-        final FrameLayout pager = (FrameLayout) pagerView;
-        if (pager.getChildCount() >= 1 && pager.getChildAt(0) instanceof LinearLayout) {
-            polishFetchPane(activity, (LinearLayout) pager.getChildAt(0));
-        }
-        if (pager.getChildCount() >= 2 && pager.getChildAt(1) instanceof LinearLayout) {
-            polishQueuePane(activity, (LinearLayout) pager.getChildAt(1));
-        }
-    }
-
-    private static void replaceMainHeader(final Activity activity, final LinearLayout root) {
-        final View old = root.getChildAt(0);
-        if (old instanceof LinearLayout) return;
-        root.removeViewAt(0);
-
-        final LinearLayout header = new LinearLayout(activity);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(activity, 20), dp(activity, 18), dp(activity, 20), dp(activity, 12));
-
-        final TextView title = sans(activity, narrow(activity) ? 23 : 25, TEXT);
-        title.setText("Downloader");
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        header.addView(title);
-
-        final TextView subtitle = sans(activity, 12, MUTED);
-        subtitle.setText("YouTube · Spotify · SoundCloud");
-        subtitle.setPadding(0, dp(activity, 5), 0, 0);
-        header.addView(subtitle);
-
-        root.addView(header, 0, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-    }
-
-    private static void polishTabs(final Activity activity, final View tabsView) {
-        if (!(tabsView instanceof LinearLayout)) return;
-        final LinearLayout wrap = (LinearLayout) tabsView;
-        if (wrap.getChildCount() == 0 || !(wrap.getChildAt(0) instanceof LinearLayout)) return;
-        final LinearLayout bar = (LinearLayout) wrap.getChildAt(0);
-        wrap.setPadding(dp(activity, 20), 0, dp(activity, 20), dp(activity, 4));
-        bar.setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 4));
-        bar.setBackground(box(activity, SURFACE, LINE, 16));
-        for (int i = 0; i < bar.getChildCount(); i++) {
-            final View tab = bar.getChildAt(i);
-            final LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(activity, 42), 1f);
-            if (i > 0) p.leftMargin = dp(activity, 4);
-            tab.setLayoutParams(p);
-            if (tab instanceof TextView) {
-                final TextView text = (TextView) tab;
-                text.setTextSize(size(12));
-                text.setLetterSpacing(.04f);
-                text.setGravity(Gravity.CENTER);
-                text.setBackground(pressable(activity, Color.TRANSPARENT, ACCENT_SOFT, 12));
-            }
-        }
-        if (wrap.getChildCount() > 1) wrap.getChildAt(1).setVisibility(View.GONE);
-    }
-
-    private static void polishFetchPane(final Activity activity, final LinearLayout pane) {
-        pane.setPadding(dp(activity, 20), dp(activity, 16), dp(activity, 20), 0);
-        if (pane.getChildCount() < 11) return;
-
-        final View input = pane.getChildAt(0);
-        if (input instanceof EditText) {
-            final EditText field = (EditText) input;
-            field.setTextSize(size(15));
-            field.setTypeface(Typeface.DEFAULT);
-            field.setSingleLine(false);
-            field.setMinHeight(dp(activity, 58));
-            field.setPadding(dp(activity, 16), dp(activity, 14), dp(activity, 16), dp(activity, 14));
-            field.setBackground(box(activity, SURFACE_RAISED, LINE, 16));
-        }
-
-        final View clipboard = pane.getChildAt(1);
-        if (clipboard instanceof LinearLayout) {
-            equalizeChildren(activity, (LinearLayout) clipboard, 42);
-        }
-
-        final View source = pane.getChildAt(2);
-        final View duration = pane.getChildAt(3);
-        final View sort = pane.getChildAt(4);
-        pane.removeView(source);
-        pane.removeView(duration);
-        pane.removeView(sort);
-
-        final LinearLayout filterBlock = new LinearLayout(activity);
-        filterBlock.setOrientation(LinearLayout.VERTICAL);
-        if (narrow(activity)) {
-            final LinearLayout first = new LinearLayout(activity);
-            first.setOrientation(LinearLayout.HORIZONTAL);
-            first.addView(source, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 44)));
-            filterBlock.addView(first);
-
-            final LinearLayout second = new LinearLayout(activity);
-            second.setOrientation(LinearLayout.HORIZONTAL);
-            addWeighted(activity, second, duration, 1f, 0);
-            addWeighted(activity, second, sort, 1f, 8);
-            final LinearLayout.LayoutParams secondParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 44));
-            secondParams.topMargin = dp(activity, 8);
-            filterBlock.addView(second, secondParams);
-        } else {
-            final LinearLayout filters = new LinearLayout(activity);
-            filters.setOrientation(LinearLayout.HORIZONTAL);
-            addWeighted(activity, filters, source, 1.15f, 0);
-            addWeighted(activity, filters, duration, 1f, 8);
-            addWeighted(activity, filters, sort, 1f, 8);
-            filterBlock.addView(filters, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 46)));
-        }
-        final LinearLayout.LayoutParams filterBlockParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        filterBlockParams.topMargin = dp(activity, 10);
-        pane.addView(filterBlock, 2, filterBlockParams);
-
-        final View recent = pane.getChildAt(3);
-        final View fetch = pane.getChildAt(4);
-        pane.removeView(recent);
-        pane.removeView(fetch);
-        final LinearLayout actions = new LinearLayout(activity);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        addWeighted(activity, actions, recent, .8f, 0);
-        addWeighted(activity, actions, fetch, 1.7f, 8);
-        final LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 50));
-        actionParams.topMargin = dp(activity, 10);
-        pane.addView(actions, 3, actionParams);
-
-        if (fetch instanceof Button) {
-            final Button b = (Button) fetch;
-            b.setText("SEARCH / INSPECT");
-            b.setTextSize(size(narrow(activity) ? 12 : 13));
-            b.setLetterSpacing(.03f);
-            b.setBackground(pressable(activity, ACCENT, Color.parseColor("#5C91E8"), 14));
-        }
-        if (recent instanceof Button) {
-            final Button b = (Button) recent;
-            b.setText("RECENT");
-            b.setTextSize(size(11));
-        }
-
-        if (pane.getChildCount() >= 8) {
-            final View preview = pane.getChildAt(4);
-            if (preview instanceof ImageView) {
-                preview.setBackground(box(activity, SURFACE, LINE, 18));
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) preview.setClipToOutline(true);
-                final ViewGroup.LayoutParams raw = preview.getLayoutParams();
-                if (raw instanceof LinearLayout.LayoutParams) {
-                    final LinearLayout.LayoutParams p = (LinearLayout.LayoutParams) raw;
-                    p.height = dp(activity, narrow(activity) ? 164 : 184);
-                    p.topMargin = dp(activity, 14);
-                    preview.setLayoutParams(p);
-                }
-            }
-
-            final View status = pane.getChildAt(5);
-            if (status instanceof TextView) {
-                final TextView text = (TextView) status;
-                text.setTextSize(size(14));
-                text.setTextColor(TEXT);
-                text.setLineSpacing(dp(activity, 2), 1f);
-                text.setPadding(dp(activity, 14), dp(activity, 12), dp(activity, 14), dp(activity, 12));
-                text.setBackground(box(activity, SURFACE, LINE, 14));
-                final LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-                p.topMargin = dp(activity, 10);
-                p.bottomMargin = dp(activity, 8);
-                text.setLayoutParams(p);
-            }
-
-            final View list = pane.getChildAt(7);
-            if (list instanceof ListView) {
-                final ListView resultList = (ListView) list;
-                resultList.setClipToPadding(false);
-                resultList.setPadding(0, 0, 0, dp(activity, 16));
-                resultList.setVerticalScrollBarEnabled(false);
-            }
-        }
-    }
-
-    private static void polishQueuePane(final Activity activity, final LinearLayout pane) {
-        pane.setPadding(dp(activity, 20), dp(activity, 14), dp(activity, 20), dp(activity, 12));
-        if (pane.getChildCount() < 10) return;
-
-        final View summary = pane.getChildAt(0);
-        if (summary instanceof TextView) {
-            final TextView text = (TextView) summary;
-            text.setTextColor(TEXT);
-            text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            text.setTextSize(size(12));
-            text.setPadding(dp(activity, 14), dp(activity, 12), dp(activity, 14), dp(activity, 12));
-            text.setBackground(box(activity, SURFACE_RAISED, LINE, 14));
-            final LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            p.bottomMargin = dp(activity, 10);
-            text.setLayoutParams(p);
-        }
-
-        final View filter = pane.getChildAt(2);
-        final View sort = pane.getChildAt(3);
-        pane.removeView(filter);
-        pane.removeView(sort);
-        final LinearLayout filterRow = new LinearLayout(activity);
-        filterRow.setOrientation(LinearLayout.HORIZONTAL);
-        addWeighted(activity, filterRow, filter, 1f, 0);
-        addWeighted(activity, filterRow, sort, 1f, 8);
-        final LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 46));
-        fp.bottomMargin = dp(activity, 10);
-        pane.addView(filterRow, 2, fp);
-
-        if (pane.getChildCount() >= 9) {
-            final View batch = pane.getChildAt(3);
-            if (batch instanceof LinearLayout) equalizeChildren(activity, (LinearLayout) batch, 42);
-
-            final View pause = pane.getChildAt(4);
-            final View retry = pane.getChildAt(5);
-            final View history = pane.getChildAt(6);
-            pane.removeView(pause);
-            pane.removeView(retry);
-            pane.removeView(history);
-
-            final LinearLayout utilities = new LinearLayout(activity);
-            if (narrow(activity)) {
-                utilities.setOrientation(LinearLayout.VERTICAL);
-                final LinearLayout firstRow = new LinearLayout(activity);
-                firstRow.setOrientation(LinearLayout.HORIZONTAL);
-                addWeighted(activity, firstRow, pause, 1.3f, 0);
-                addWeighted(activity, firstRow, retry, 1f, 8);
-                utilities.addView(firstRow, new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 42)));
-                final LinearLayout.LayoutParams historyParams = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, dp(activity, 42));
-                historyParams.topMargin = dp(activity, 8);
-                utilities.addView(history, historyParams);
-            } else {
-                utilities.setOrientation(LinearLayout.HORIZONTAL);
-                addWeighted(activity, utilities, pause, 1.25f, 0);
-                addWeighted(activity, utilities, retry, 1f, 8);
-                addWeighted(activity, utilities, history, .9f, 8);
-            }
-            final LinearLayout.LayoutParams up = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            up.topMargin = dp(activity, 10);
-            up.bottomMargin = dp(activity, 12);
-            pane.addView(utilities, 4, up);
-
-            final View list = pane.getChildAt(5);
-            if (list instanceof ListView) {
-                final ListView queue = (ListView) list;
-                queue.setClipToPadding(false);
-                queue.setPadding(0, 0, 0, dp(activity, 12));
-                queue.setVerticalScrollBarEnabled(false);
-            }
-        }
-    }
-
-    private static void polishHistory(final Activity activity, final ViewGroup content) {
-        final View rootView = firstChild(content);
-        if (!(rootView instanceof LinearLayout)) return;
-        final LinearLayout root = (LinearLayout) rootView;
-        root.setPadding(dp(activity, 20), dp(activity, 22), dp(activity, 20), dp(activity, 14));
-        if (root.getChildCount() > 0 && root.getChildAt(0) instanceof TextView) {
-            final TextView title = (TextView) root.getChildAt(0);
-            title.setText("Download history");
-            title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            title.setTextSize(size(narrow(activity) ? 22 : 24));
-            title.setLetterSpacing(0f);
-        }
-        if (root.getChildCount() > 1 && root.getChildAt(1) instanceof TextView) {
-            ((TextView) root.getChildAt(1)).setTextSize(size(13));
-        }
-        for (int i = 0; i < root.getChildCount(); i++) {
-            final View child = root.getChildAt(i);
-            if (child instanceof ListView) {
-                ((ListView) child).setVerticalScrollBarEnabled(false);
-            }
-        }
-    }
-
-    private static View firstChild(final ViewGroup group) {
-        return group.getChildCount() == 0 ? null : group.getChildAt(0);
-    }
-
-    private static void addWeighted(final Context context, final LinearLayout row, final View child,
-                                    final float weight, final int startMarginDp) {
-        final ViewGroup parent = (ViewGroup) child.getParent();
-        if (parent != null) parent.removeView(child);
-        final LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.MATCH_PARENT, weight);
-        p.leftMargin = dp(context, startMarginDp);
-        child.setLayoutParams(p);
-        row.addView(child);
-    }
-
-    private static void equalizeChildren(final Context context, final LinearLayout row,
-                                         final int heightDp) {
-        if (row.getChildCount() == 0) return;
-        for (int i = 0; i < row.getChildCount(); i++) {
-            final View child = row.getChildAt(i);
-            final LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-                    0, dp(context, heightDp), 1f);
-            if (i > 0) p.leftMargin = dp(context, 8);
-            child.setLayoutParams(p);
-        }
-    }
-
     public static String bytes(final long count) {
         if (count < 1024) return count + " B";
         if (count < 1024 * 1024) {
-            return String.format(java.util.Locale.US, "%.0f KB", count / 1024.0);
+            return String.format(Locale.US, "%.0f KB", count / 1024.0);
         }
         if (count < 1024L * 1024 * 1024) {
-            return String.format(java.util.Locale.US, "%.1f MB", count / (1024.0 * 1024));
+            return String.format(Locale.US, "%.1f MB", count / (1024.0 * 1024));
         }
-        return String.format(java.util.Locale.US, "%.2f GB", count / (1024.0 * 1024 * 1024));
+        return String.format(Locale.US, "%.2f GB", count / (1024.0 * 1024 * 1024));
     }
 }
