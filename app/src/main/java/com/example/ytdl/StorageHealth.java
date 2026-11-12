@@ -108,11 +108,26 @@ final class StorageHealth {
 
     static Cleanup cleanup(Context context) {
         DownloadService.ensureLoaded(context);
-        // Take the same lock as the worker, then recheck the live queue and running flag.
-        // Without both checks a transfer may start between inspection and deletion.
-        synchronized (DownloadService.CACHE_MAINTENANCE_LOCK) {
-            return cleanup(context.getCacheDir(), DownloadService.snapshot(),
-                    System.currentTimeMillis(), DownloadService::isWorkerRunning);
+        // A worker can own this lock for the entire download. Never block the
+        // cleanup UI thread waiting for a large transfer to finish.
+        return cleanupWithLock(context.getCacheDir(),
+                DownloadService::isWorkerRunning,
+                DownloadService.CACHE_MAINTENANCE_LOCK);
+    }
+
+    /**
+     * Try to acquire maintenance ownership without waiting. The queue snapshot must be
+     * taken under the lock, not before it, so a newly queued task is always protected.
+     */
+    static Cleanup cleanupWithLock(File cacheDir, BooleanSupplier workerRunning,
+                                   java.util.concurrent.locks.Lock lock) {
+        if (!lock.tryLock()) return new Cleanup(0, 0, 0, true);
+        try {
+            if (workerRunning.getAsBoolean()) return new Cleanup(0, 0, 0, true);
+            return cleanup(cacheDir, DownloadService.snapshot(),
+                    System.currentTimeMillis(), workerRunning);
+        } finally {
+            lock.unlock();
         }
     }
 
