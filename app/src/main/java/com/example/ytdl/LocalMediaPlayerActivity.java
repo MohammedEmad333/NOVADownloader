@@ -152,7 +152,7 @@ public final class LocalMediaPlayerActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         if (videoView != null && prepared) {
             position = videoView.getCurrentPosition();
-            playWhenReady = videoView.isPlaying();
+            if (videoView.isPlaying()) playWhenReady = true;
         }
         state.putInt(POSITION, position);
         state.putBoolean(WAS_PLAYING, playWhenReady);
