@@ -175,6 +175,81 @@ public class NetResumeTest {
         assertEquals("AB", read(file));
     }
 
+
+    @Test public void rejectsUnverified416EvenWhenLocalExpectedLengthMatches() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(416));
+        File file = new File(folder.getRoot(), "unverified-416.part");
+        Files.write(file.toPath(), "DONE".getBytes(StandardCharsets.UTF_8));
+        try {
+            Net.fetchToFile(server.url("/file").toString(), file, 4, progress, control);
+            fail("Unverified 416 was treated as complete");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("HTTP 416 before partial"));
+        }
+        assertEquals("DONE", read(file));
+    }
+
+    @Test public void rejectsMalformedUnsatisfiedContentRange() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(416)
+                .setHeader("Content-Range", "nonsense/4"));
+        File file = new File(folder.getRoot(), "malformed-416.part");
+        Files.write(file.toPath(), "DONE".getBytes(StandardCharsets.UTF_8));
+        try {
+            Net.fetchToFile(server.url("/file").toString(), file, 4, progress, control);
+            fail("Malformed 416 total accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("HTTP 416 before partial"));
+        }
+    }
+
+    @Test public void rejects206WithWrongRangeUnit() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "items 0-3/4").setBody("DATA"));
+        File file = new File(folder.getRoot(), "bad-unit.part");
+        try {
+            Net.fetchToFile(server.url("/file").toString(), file, -1, progress, control);
+            fail("Wrong range unit accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("range mismatch"));
+        }
+        assertEquals(0L, file.length());
+    }
+
+    @Test public void retriesHttp429AndSavesFile() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(429)
+                .setHeader("Retry-After", "0"));
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-3/4").setBody("DATA"));
+        File file = new File(folder.getRoot(), "rate-limited.part");
+        Net.fetchToFile(server.url("/file").toString(), file, -1, progress, control);
+        assertEquals("DATA", read(file));
+        assertNotNull(server.takeRequest(3, TimeUnit.SECONDS));
+        assertNotNull(server.takeRequest(3, TimeUnit.SECONDS));
+    }
+
+    @Test public void validatesRetryAfterAndCapsWait() {
+        assertEquals(2000L, Net.retryAfterMillis("2", 0));
+        assertEquals(30000L, Net.retryAfterMillis("9999999999", 0));
+        assertEquals(-1L, Net.retryAfterMillis("not-a-date", 0));
+        assertEquals(-1L, Net.retryAfterMillis("-1", 0));
+        assertEquals(0L, Net.retryAfterMillis(
+                "Wed, 21 Oct 2015 07:28:00 GMT", 2000000000000L));
+    }
+
+    @Test public void rejectsUnknownLengthHttp200WhenExpectedSizeDiffers()
+            throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setChunkedBody("ABC", 2));
+        File file = new File(folder.getRoot(), "short-200.part");
+        try {
+            Net.fetchToFile(server.url("/file").toString(), file, 4, progress, control);
+            fail("Unexpectedly short HTTP 200 accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("stream length mismatch"));
+        }
+        assertEquals("ABC", read(file));
+    }
+
     private static String read(File file) throws Exception {
         return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
     }
