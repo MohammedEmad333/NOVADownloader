@@ -245,9 +245,11 @@ public class NetResumeTest {
             Net.fetchToFile(server.url("/file").toString(), file, 4, progress, control);
             fail("Unexpectedly short HTTP 200 accepted");
         } catch (IOException expected) {
-            assertTrue(expected.getMessage().contains("stream length mismatch"));
+            assertTrue(expected.getMessage().contains("stream changed since it was queued")
+                    || expected.getMessage().contains("stream length mismatch"));
         }
-        assertEquals("ABC", read(file));
+        // A reported mismatch can be rejected before the body is written.
+        assertEquals(0L, file.length());
     }
 
     private static String read(File file) throws Exception {
