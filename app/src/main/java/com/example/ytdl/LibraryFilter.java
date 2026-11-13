@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 
 /** Pure filtering and ordering for the saved/failed library, independent of Android views. */
 final class LibraryFilter {
@@ -12,6 +13,7 @@ final class LibraryFilter {
     static final int AUDIO = 2;
     static final int SUBTITLES = 3;
     static final int NEEDS_ATTENTION = 4;
+    static final int FAVORITES = 5;
 
     static final int NEWEST = 0;
     static final int OLDEST = 1;
@@ -21,11 +23,17 @@ final class LibraryFilter {
 
     static List<DownloadService.Task> select(List<DownloadService.Task> all,
                                               String search, int category, int order) {
+        return select(all, search, category, order, task -> false);
+    }
+
+    static List<DownloadService.Task> select(List<DownloadService.Task> all,
+                                              String search, int category, int order,
+                                              Predicate<DownloadService.Task> favorites) {
         final String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
         final List<DownloadService.Task> result = new ArrayList<>();
         for (DownloadService.Task task : all) {
             if (task == null || !task.state.finished()) continue;
-            if (!matchesCategory(task, category)) continue;
+            if (!matchesCategory(task, category, favorites)) continue;
             final String title = task.title == null ? "" : task.title;
             final String artist = task.artist == null ? "" : task.artist;
             final String label = task.spec == null ? "" : task.spec.label;
@@ -49,7 +57,10 @@ final class LibraryFilter {
         return result;
     }
 
-    private static boolean matchesCategory(DownloadService.Task task, int category) {
+    private static boolean matchesCategory(DownloadService.Task task, int category,
+                                           Predicate<DownloadService.Task> favorites) {
+        if (category == FAVORITES) return task.state == DownloadService.State.DONE
+                && favorites != null && favorites.test(task);
         if (category == ALL) return true;
         if (category == NEEDS_ATTENTION) {
             return task.state == DownloadService.State.FAILED
