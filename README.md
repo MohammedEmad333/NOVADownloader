@@ -190,6 +190,22 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - Videos must already be available on the device for the import feature to work.
   Only import content you own or are authorized to save.
 
+## NOVA 1.6.2: download integrity and retry reliability
+
+- Validate partial HTTP 206 Content-Range units and exact byte ranges before appending
+  to an existing download. Invalid responses fail closed instead of corrupting a file.
+- A local expected length alone no longer marks an HTTP 416 response as complete.
+  A valid server-provided total must match the local file and any recorded total.
+- Retry HTTP 429 rate limits alongside transient server errors with bounded exponential
+  backoff. Honor valid Retry-After seconds or HTTP dates, capped at 30 seconds;
+  pause, cancellation and network scheduling still interrupt retry waits.
+- Verify complete HTTP 200 bodies against a known expected size. Re-check free
+  storage periodically during long un-ranged responses rather than only before
+  the transfer starts.
+- Regression tests cover malformed/unsupported Content-Range, unverified 416,
+  HTTP 429 retry, bounded Retry-After and mismatched HTTP 200 size.
+- No extra account permissions, background scraping or paid APIs.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
