@@ -218,6 +218,26 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   unchanged and changed ETags, and weak validators.
 - This is a transfer-integrity improvement; it does not add site-login access.
 
+## NOVA 1.7: offline library playback and favorites
+
+- **Library > Play** opens saved videos inside NOVA using Android's built-in
+  `VideoView` and `MediaController`. Tap the video for play/pause, timeline
+  scrubbing and seeking; playback is local, with no remote-stream requests.
+- Only previously completed, recognized MediaStore video items can be opened
+  internally. The player activity is not exported and accepts a library task ID,
+  not an arbitrary URI from another app.
+- **Open externally** remains available for videos, and audio/subtitle files
+  still open in a compatible installed app. If the native player cannot decode
+  a saved video, an external-player fallback is offered.
+- **Favorites:** star any completed library item and filter by Favorites.
+  Favorites are stored locally, matched to the exact saved MediaStore URI
+  rather than only its task ID, and do not alter or delete media.
+- Preserves video position across activity recreation and pauses playback when
+  NOVA goes into the background. Playback codec support follows the device.
+- Focused unit tests exercise URI validation, private player intent, favorite
+  persistence and search/filter behavior. No new Android permissions, accounts,
+  external SDKs or API subscriptions are required.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
