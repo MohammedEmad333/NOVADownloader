@@ -9,7 +9,11 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import android.os.StatFs;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +41,7 @@ public final class Net {
      */
     private static final long CHUNK_BYTES = 4L * 1024 * 1024;
     private static final int CHUNK_RETRIES = 3;
+    private static final long MAX_RETRY_AFTER_MS = 30_000L;
     private static final long STORAGE_RESERVE_BYTES = 32L * 1024 * 1024;
 
     public static final OkHttpClient HTTP = new OkHttpClient.Builder()
@@ -166,13 +171,9 @@ public final class Net {
                                 progress.onProgress(written, reportedTotal);
                                 return;
                             }
-                            // A conflicting server total must not be hidden by a
-                            // locally saved expected length.
-                            if (reportedTotal <= 0 && expectedTotal > 0
-                                    && written == expectedTotal) {
-                                progress.onProgress(written, expectedTotal);
-                                return;
-                            }
+                            // Never trust a local expected length as evidence of remote
+                            // completion: 416 without a valid */total may mean an error,
+                            // a changed resource or a server that ignored the range.
                             throw new UnsafeResume("HTTP 416 before partial was confirmed complete"
                                     + " (have " + written + " bytes"
                                     + (reportedTotal > 0 ? ", server says " + reportedTotal : "")
@@ -181,10 +182,17 @@ public final class Net {
                         if (code != 200 && code != 206) {
                             if (isTransientHttp(code) && attempt < CHUNK_RETRIES) {
                                 attempt++;
-                                retryDelay(control, attempt);
+                                final long suggestedWait = retryAfterMillis(
+                                        response.header("Retry-After"),
+                                        System.currentTimeMillis());
+                                // Release the connection before waiting to retry.
+                                response.close();
+                                retryDelay(control, attempt, suggestedWait);
                                 continue;
                             }
-                            throw new IOException("HTTP " + code);
+                            throw new IOException(code == 429
+                                    ? "HTTP 429 (rate limited; please retry later)"
+                                    : "HTTP " + code);
                         }
 
                         // Validate every 206 response, including the very first chunk.
@@ -196,6 +204,9 @@ public final class Net {
                         long declaredRangeBytes = -1;
                         if (code == 206) {
                             final String contentRange = response.header("Content-Range");
+                            if (!isValidPartialContentRange(contentRange)) {
+                                throw new UnsafeResume("range mismatch (invalid Content-Range)");
+                            }
                             final long rangeStart = contentRangeStart(contentRange);
                             final long rangeEnd = contentRangeEnd(contentRange);
                             final long rangeTotal = contentRangeTotal(contentRange);
@@ -245,16 +256,25 @@ public final class Net {
                         }
 
                         long responseBytes = 0;
+                        long lastSpaceCheck = written;
                         try (InputStream in = body.byteStream()) {
                             final byte[] buffer = new byte[64 * 1024];
                             int read;
-                            while ((read = in.read(buffer)) > 0) {
+                            while ((read = in.read(buffer)) != -1) {
                                 control.checkpoint();
+                                if (read == 0) continue;
                                 responseBytes += read;
                                 if (declaredRangeBytes >= 0
                                         && responseBytes > declaredRangeBytes) {
                                     throw new UnsafeResume("server returned more bytes than declared"
                                             + " for range starting at " + requestStart);
+                                }
+                                // A server can ignore Range and stream an entire video as
+                                // HTTP 200. Check free space during the body, not only before
+                                // the first chunk, to protect the device's storage reserve.
+                                if (written - lastSpaceCheck >= CHUNK_BYTES) {
+                                    ensureWritableSpace(dest, CHUNK_BYTES);
+                                    lastSpaceCheck = written;
                                 }
                                 out.write(buffer, 0, read);
                                 written += read;
@@ -270,6 +290,16 @@ public final class Net {
                         }
                         if (code == 200) {
                             if (responseBytes == 0) throw new IOException("empty stream body");
+                            // Chunked HTTP 200 may have no Content-Length. Verify the
+                            // number of bytes actually saved when a known total exists.
+                            if (expectedTotal > 0 && written != expectedTotal) {
+                                throw new UnsafeResume("stream length mismatch after HTTP 200 ("
+                                        + written + " of " + expectedTotal + " bytes)");
+                            }
+                            if (total > 0 && written != total) {
+                                throw new UnsafeResume("incomplete HTTP 200 body ("
+                                        + written + " of " + total + " bytes)");
+                            }
                             return;
                         }
                         break;
@@ -308,34 +338,64 @@ public final class Net {
     }
 
     private static boolean isTransientHttp(final int code) {
-        return code == 408 || code == 425 || code == 500 || code == 502
+        return code == 408 || code == 425 || code == 429 || code == 500 || code == 502
                 || code == 503 || code == 504;
     }
 
+    /** Bounded server backoff: HTTP Retry-After supports seconds or an RFC 1123 date. */
+    static long retryAfterMillis(final String header, final long nowMs) {
+        if (header == null) return -1;
+        final String value = header.trim();
+        if (value.matches("[0-9]{1,10}")) {
+            try {
+                return Math.min(MAX_RETRY_AFTER_MS, Long.parseLong(value) * 1000L);
+            } catch (final NumberFormatException ignored) {
+                return -1;
+            }
+        }
+        try {
+            final long until = ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME)
+                    .toInstant().toEpochMilli();
+            return Math.min(MAX_RETRY_AFTER_MS, Math.max(0L, until - nowMs));
+        } catch (final DateTimeParseException ignored) {
+            return -1;
+        }
+    }
+
     private static void retryDelay(final Control control, final int attempt)
-            throws Paused, Cancelled, NetworkBlocked {
-        final long delayMs = 500L * (1L << Math.min(attempt - 1, 2));
-        final long until = System.currentTimeMillis() + delayMs;
+            throws IOException {
+        retryDelay(control, attempt, -1);
+    }
+
+    private static void retryDelay(final Control control, final int attempt,
+                                   final long retryAfterMs) throws IOException {
+        final long exponentialMs = 500L * (1L << Math.min(attempt - 1, 2));
+        final long delayMs = Math.max(exponentialMs, Math.max(0, retryAfterMs));
+        final long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(delayMs);
         while (true) {
             control.checkpoint();
-            final long remaining = until - System.currentTimeMillis();
-            if (remaining <= 0) break;
+            final long remainingNanos = until - System.nanoTime();
+            if (remainingNanos <= 0) break;
             try {
-                Thread.sleep(Math.min(200L, remaining));
+                Thread.sleep(Math.min(200L,
+                        Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
             } catch (final InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                throw new InterruptedIOException("download retry interrupted");
             }
         }
     }
 
+    private static boolean isValidPartialContentRange(final String header) {
+        return header != null && header.matches("(?i)bytes\\s+[0-9]+-[0-9]+/[0-9]+");
+    }
+
     private static long unsatisfiedRangeTotal(final String contentRange) {
         // Unsatisfied ranges are reported as "bytes */52428800".
-        if (contentRange == null) return -1;
-        final int slash = contentRange.indexOf('/');
-        if (slash < 0 || slash + 1 >= contentRange.length()) return -1;
+        if (contentRange == null
+                || !contentRange.matches("(?i)bytes\\s+\\*/[0-9]+")) return -1;
         try {
-            return Long.parseLong(contentRange.substring(slash + 1).trim());
+            return Long.parseLong(contentRange.substring(contentRange.indexOf('/') + 1));
         } catch (final NumberFormatException ignored) {
             return -1;
         }
