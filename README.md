@@ -206,6 +206,18 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   HTTP 429 retry, bounded Retry-After and mismatched HTTP 200 size.
 - No extra account permissions, background scraping or paid APIs.
 
+## NOVA 1.6.3: HTTP representation safety
+
+- Request uncompressed (`Accept-Encoding: identity`) file bytes for ranged downloads,
+  and reject compressed server responses so saved offsets always refer to real bytes.
+- For multi-chunk streams with a strong HTTP ETag, send `If-Range` on later
+  requests and reject a changed ETag before appending mismatched content.
+- Weak ETags and malformed validators are never used for `If-Range`.
+  Existing paused downloads still use the prior known-length and range guards.
+- MockWebServer regression tests cover compression rejection, identity encoding,
+  unchanged and changed ETags, and weak validators.
+- This is a transfer-integrity improvement; it does not add site-login access.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
