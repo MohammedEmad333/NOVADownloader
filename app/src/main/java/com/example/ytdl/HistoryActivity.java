@@ -405,7 +405,7 @@ public final class HistoryActivity extends Activity {
                 }
                 actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT,
                         v -> shareSaved(task)));
-                final boolean starred = LibraryFavorites.isFavorite(this, task);
+                final boolean starred = LibraryFavorites.isFavorite(HistoryActivity.this, task);
                 actions.addView(action(starred ? tr("★ Saved", "★ مفضلة")
                                 : tr("☆ Favorite", "☆ المفضلة"), Ui.SECONDARY,
                         v -> toggleFavorite(task)));
