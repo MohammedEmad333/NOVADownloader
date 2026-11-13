@@ -134,6 +134,9 @@ public final class Net {
 
         long written = dest.exists() ? dest.length() : 0;
         long total = -1;
+        // This strong entity tag is scoped to one transfer attempt. It prevents
+        // mixing bytes from two different HTTP representations between chunks.
+        String rangeValidator = null;
         ensureWritableSpace(dest, CHUNK_BYTES);
 
         // Append, never truncate — the existing bytes are the resume point.
@@ -147,12 +150,18 @@ public final class Net {
                 while (true) {
                     control.checkpoint();
                     final long requestStart = written;
-                    final okhttp3.Request request = new okhttp3.Request.Builder()
+                    final okhttp3.Request.Builder requestBuilder = new okhttp3.Request.Builder()
                             .url(url)
-                            .addHeader("User-Agent", USER_AGENT)
-                            .addHeader("Range", "bytes=" + requestStart + "-"
-                                    + (requestStart + CHUNK_BYTES - 1))
-                            .build();
+                            .header("User-Agent", USER_AGENT)
+                            // OkHttp normally advertises gzip and transparently decodes it.
+                            // Byte ranges must be offsets in the *saved* representation.
+                            .header("Accept-Encoding", "identity")
+                            .header("Range", "bytes=" + requestStart + "-"
+                                    + (requestStart + CHUNK_BYTES - 1));
+                    if (requestStart > 0 && rangeValidator != null) {
+                        requestBuilder.header("If-Range", rangeValidator);
+                    }
+                    final okhttp3.Request request = requestBuilder.build();
 
                     try (okhttp3.Response response = HTTP.newCall(request).execute()) {
                         final int code = response.code();
@@ -195,6 +204,14 @@ public final class Net {
                                     : "HTTP " + code);
                         }
 
+                        // A proxy may ignore Accept-Encoding: identity. Never append
+                        // compressed bytes at offsets measured on the decoded body.
+                        final String contentEncoding = response.header("Content-Encoding");
+                        if (contentEncoding != null
+                                && !"identity".equalsIgnoreCase(contentEncoding.trim())) {
+                            throw new UnsafeResume("unsupported Content-Encoding for download");
+                        }
+
                         // Validate every 206 response, including the very first chunk.
                         // A wrong first offset or a changed total would corrupt the file.
                         if (requestStart > 0 && code != 206) {
@@ -227,6 +244,14 @@ public final class Net {
                             if (total > 0 && rangeTotal != total) {
                                 throw new UnsafeResume("stream length changed between chunks ("
                                         + total + " -> " + rangeTotal + " bytes)");
+                            }
+                            final String responseEtag = strongEtag(response.header("ETag"));
+                            if (rangeValidator != null && responseEtag != null
+                                    && !rangeValidator.equals(responseEtag)) {
+                                throw new UnsafeResume("stream ETag changed between chunks");
+                            }
+                            if (rangeValidator == null) {
+                                rangeValidator = responseEtag;
                             }
                             declaredRangeBytes = rangeEnd - rangeStart + 1;
                         }
@@ -384,6 +409,18 @@ public final class Net {
                 throw new InterruptedIOException("download retry interrupted");
             }
         }
+    }
+
+    /** If-Range must use a strong ETag, never a weak W/ validator. */
+    static String strongEtag(final String header) {
+        if (header == null || header.length() < 2 || header.length() > 200
+                || header.charAt(0) != '"' || header.charAt(header.length() - 1) != '"') {
+            return null;
+        }
+        for (int i = 0; i < header.length(); i++) {
+            if (header.charAt(i) < 0x20 || header.charAt(i) == 0x7f) return null;
+        }
+        return header;
     }
 
     private static boolean isValidPartialContentRange(final String header) {
