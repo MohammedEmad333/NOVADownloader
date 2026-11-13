@@ -404,7 +404,12 @@ public final class HistoryActivity extends Activity {
                 actions.addView(action(starred ? tr("★ Saved", "★ مفضلة")
                                 : tr("☆ Favorite", "☆ المفضلة"), Ui.SECONDARY,
                         v -> toggleFavorite(task)));
-                card.addView(actions);
+                final android.widget.HorizontalScrollView actionScroll =
+                        new android.widget.HorizontalScrollView(HistoryActivity.this);
+                actionScroll.setHorizontalScrollBarEnabled(false);
+                actionScroll.setFillViewport(false);
+                actionScroll.addView(actions);
+                card.addView(actionScroll);
             }
             final LinearLayout wrap = new LinearLayout(HistoryActivity.this);
             wrap.setPadding(0, 0, 0, Ui.dp(HistoryActivity.this, 11));
