@@ -349,7 +349,7 @@ public class NetResumeTest {
     @Test public void weakEtagNeverBecomesIfRange() {
         assertNull(Net.strongEtag("W/\"weak\""));
         assertNull(Net.strongEtag("unquoted"));
-        assertNull(Net.strongEtag("\"bad\\nheader\""));
+        assertNull(Net.strongEtag("\"bad\nheader\""));
         assertEquals("\"strong\"", Net.strongEtag("\"strong\""));
     }
 
