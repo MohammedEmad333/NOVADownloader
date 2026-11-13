@@ -147,7 +147,8 @@ public final class HistoryActivity extends Activity {
         category = selector(new String[]{
                 tr("All files", "الكل"), tr("Videos", "فيديو"),
                 tr("Audio", "صوت"), tr("Subtitles", "ترجمة"),
-                tr("Needs attention", "تحتاج متابعة")
+                tr("Needs attention", "تحتاج متابعة"),
+                tr("Favorites", "المفضلة")
         });
         sort = selector(new String[]{
                 tr("Newest first", "الأحدث أولاً"), tr("Oldest first", "الأقدم أولاً"),
@@ -270,7 +271,8 @@ public final class HistoryActivity extends Activity {
         final List<DownloadService.Task> visible = LibraryFilter.select(all,
                 search == null ? "" : search.getText().toString(),
                 category == null ? 0 : category.getSelectedItemPosition(),
-                sort == null ? 0 : sort.getSelectedItemPosition());
+                sort == null ? 0 : sort.getSelectedItemPosition(),
+                task -> LibraryFavorites.isFavorite(this, task));
         items.clear();
         items.addAll(visible);
         if (summary != null) {
@@ -305,6 +307,16 @@ public final class HistoryActivity extends Activity {
         } catch (final Exception e) {
             Toast.makeText(this, "No app available to open this file", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void playSaved(final DownloadService.Task task) {
+        if (!LocalMediaPlayerActivity.canPlay(task)) return;
+        startActivity(LocalMediaPlayerActivity.intentFor(this, task));
+    }
+
+    private void toggleFavorite(final DownloadService.Task task) {
+        LibraryFavorites.toggle(this, task);
+        refresh();
     }
 
     private void shareSaved(final DownloadService.Task task) {
@@ -352,7 +364,9 @@ public final class HistoryActivity extends Activity {
             heading.setOrientation(LinearLayout.HORIZONTAL);
             heading.setGravity(Gravity.CENTER_VERTICAL);
             final TextView title = Ui.headline(HistoryActivity.this, 15);
-            title.setText(task.title == null ? tr("Untitled download", "تنزيل بلا عنوان") : task.title);
+            title.setText((LibraryFavorites.isFavorite(HistoryActivity.this, task)
+                    ? "★  " : "") + (task.title == null
+                    ? tr("Untitled download", "تنزيل بلا عنوان") : task.title));
             title.setMaxLines(2);
             title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             heading.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -377,8 +391,19 @@ public final class HistoryActivity extends Activity {
                 final LinearLayout actions = new LinearLayout(HistoryActivity.this);
                 actions.setOrientation(LinearLayout.HORIZONTAL);
                 actions.setPadding(0, Ui.dp(HistoryActivity.this, 12), 0, 0);
-                actions.addView(action(tr("Open file", "فتح"), Ui.OK, v -> openSaved(task)));
-                actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT, v -> shareSaved(task)));
+                if (LocalMediaPlayerActivity.canPlay(task)) {
+                    actions.addView(action(tr("Play", "تشغيل"), Ui.OK,
+                            v -> playSaved(task)));
+                } else {
+                    actions.addView(action(tr("Open file", "فتح"), Ui.OK,
+                            v -> openSaved(task)));
+                }
+                actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT,
+                        v -> shareSaved(task)));
+                final boolean starred = LibraryFavorites.isFavorite(this, task);
+                actions.addView(action(starred ? tr("★ Saved", "★ مفضلة")
+                                : tr("☆ Favorite", "☆ المفضلة"), Ui.SECONDARY,
+                        v -> toggleFavorite(task)));
                 card.addView(actions);
             }
             final LinearLayout wrap = new LinearLayout(HistoryActivity.this);
