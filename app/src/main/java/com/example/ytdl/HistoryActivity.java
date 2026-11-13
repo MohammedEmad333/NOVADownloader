@@ -189,7 +189,8 @@ public final class HistoryActivity extends Activity {
                         Toast.LENGTH_SHORT).show();
                 finish();
             } else if (task.state == DownloadService.State.DONE && task.outputUri != null) {
-                openSaved(task);
+                if (LocalMediaPlayerActivity.canPlay(task)) playSaved(task);
+                else openSaved(task);
             }
         });
         root.addView(list, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -396,6 +397,10 @@ public final class HistoryActivity extends Activity {
                             v -> playSaved(task)));
                 } else {
                     actions.addView(action(tr("Open file", "فتح"), Ui.OK,
+                            v -> openSaved(task)));
+                }
+                if (LocalMediaPlayerActivity.canPlay(task)) {
+                    actions.addView(action(tr("Open externally", "فتح خارجي"), Ui.MUTED,
                             v -> openSaved(task)));
                 }
                 actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT,
