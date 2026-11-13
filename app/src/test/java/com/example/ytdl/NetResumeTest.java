@@ -248,8 +248,9 @@ public class NetResumeTest {
             assertTrue(expected.getMessage().contains("stream changed since it was queued")
                     || expected.getMessage().contains("stream length mismatch"));
         }
-        // A reported mismatch can be rejected before the body is written.
-        assertEquals(0L, file.length());
+        // Chunked HTTP 200 has no declared size: detect the mismatch after
+        // streaming the three bytes, rather than silently reporting success.
+        assertEquals("ABC", read(file));
     }
 
     private static String read(File file) throws Exception {
