@@ -253,6 +253,106 @@ public class NetResumeTest {
         assertEquals("ABC", read(file));
     }
 
+
+    @Test public void requestsIdentityEncodingForRangedDownloads() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-3/4")
+                .setBody("DATA"));
+        File file = new File(folder.getRoot(), "identity.part");
+        Net.fetchToFile(server.url("/file").toString(), file, -1, progress, control);
+        final RecordedRequest request = server.takeRequest(3, TimeUnit.SECONDS);
+        assertNotNull(request);
+        assertEquals("identity", request.getHeader("Accept-Encoding"));
+        assertEquals("DATA", read(file));
+    }
+
+    @Test public void refusesCompressed206BeforeWritingPartial() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-3/4")
+                .setHeader("Content-Encoding", "gzip")
+                .setBody("DATA"));
+        File file = new File(folder.getRoot(), "compressed-range.part");
+        try {
+            Net.fetchToFile(server.url("/file").toString(), file, -1, progress, control);
+            fail("Compressed 206 should not be appended");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("Content-Encoding"));
+        }
+        assertEquals(0L, file.length());
+        assertEquals(1, server.getRequestCount());
+    }
+
+    @Test public void refusesCompressedHttp200BeforeWriting() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Encoding", "gzip")
+                .setBody("DATA"));
+        File file = new File(folder.getRoot(), "compressed-full.part");
+        try {
+            Net.fetchToFile(server.url("/file").toString(), file, -1, progress, control);
+            fail("Compressed response should not be saved as media bytes");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("Content-Encoding"));
+        }
+        assertEquals(0L, file.length());
+    }
+
+    @Test public void strongEtagPreventsMixingDifferentChunks() throws Exception {
+        final int chunk = 4 * 1024 * 1024;
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-" + (chunk - 1)
+                        + "/" + (chunk + 2))
+                .setHeader("ETag", "\"original\"")
+                .setBody(new Buffer().write(new byte[chunk])));
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes " + chunk + "-" + (chunk + 1)
+                        + "/" + (chunk + 2))
+                .setHeader("ETag", "\"changed\"")
+                .setBody("XY"));
+        File file = new File(folder.getRoot(), "changed-etag.part");
+        try {
+            Net.fetchToFile(server.url("/file").toString(), file, -1, progress, control);
+            fail("Changed ETag between chunks should not be accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("ETag changed"));
+        }
+        assertEquals(chunk, file.length());
+        final RecordedRequest first = server.takeRequest(3, TimeUnit.SECONDS);
+        final RecordedRequest second = server.takeRequest(3, TimeUnit.SECONDS);
+        assertNotNull(first);
+        assertNotNull(second);
+        assertNull(first.getHeader("If-Range"));
+        assertEquals("\"original\"", second.getHeader("If-Range"));
+        assertEquals("identity", second.getHeader("Accept-Encoding"));
+    }
+
+    @Test public void unchangedEtagAllowsSubsequentChunk() throws Exception {
+        final int chunk = 4 * 1024 * 1024;
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-" + (chunk - 1)
+                        + "/" + (chunk + 2))
+                .setHeader("ETag", "\"stable\"")
+                .setBody(new Buffer().write(new byte[chunk])));
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes " + chunk + "-" + (chunk + 1)
+                        + "/" + (chunk + 2))
+                .setHeader("ETag", "\"stable\"")
+                .setBody("XY"));
+        File file = new File(folder.getRoot(), "stable-etag.part");
+        Net.fetchToFile(server.url("/file").toString(), file, -1, progress, control);
+        assertEquals(chunk + 2L, file.length());
+        assertNotNull(server.takeRequest(3, TimeUnit.SECONDS));
+        final RecordedRequest second = server.takeRequest(3, TimeUnit.SECONDS);
+        assertNotNull(second);
+        assertEquals("\"stable\"", second.getHeader("If-Range"));
+    }
+
+    @Test public void weakEtagNeverBecomesIfRange() {
+        assertNull(Net.strongEtag("W/\"weak\""));
+        assertNull(Net.strongEtag("unquoted"));
+        assertNull(Net.strongEtag("\"bad\\nheader\""));
+        assertEquals("\"strong\"", Net.strongEtag("\"strong\""));
+    }
+
     private static String read(File file) throws Exception {
         return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
     }
