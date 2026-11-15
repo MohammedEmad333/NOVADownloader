@@ -86,6 +86,32 @@ final class LibraryOrganizer {
         return result;
     }
 
+    /** Group a selected candidate with other completed copies, never with itself. */
+    static List<DownloadService.Task> matchingCopies(
+            List<DownloadService.Task> all, DownloadService.Task selected) {
+        final List<Object> key = candidateKey(selected);
+        if (key == null || all == null) return Collections.emptyList();
+        final List<DownloadService.Task> matches = new ArrayList<>();
+        final Set<String> distinctUris = new HashSet<>();
+        for (DownloadService.Task task : all) {
+            if (key.equals(candidateKey(task))) {
+                matches.add(task);
+                distinctUris.add(task.outputUri);
+            }
+        }
+        return distinctUris.size() > 1 ? matches : Collections.emptyList();
+    }
+
+    /** Stable source-first ordering with newest entries first inside each source. */
+    static List<DownloadService.Task> groupedBySource(List<DownloadService.Task> visible) {
+        final List<DownloadService.Task> result = new ArrayList<>(visible);
+        result.sort((a, b) -> {
+            final int sources = Integer.compare(sourceOf(a), sourceOf(b));
+            return sources != 0 ? sources : Long.compare(b.id, a.id);
+        });
+        return result;
+    }
+
     private static List<Object> candidateKey(DownloadService.Task task) {
         if (task == null || task.id <= 0 || task.state != DownloadService.State.DONE
                 || task.outputUri == null || task.outputUri.isEmpty()
