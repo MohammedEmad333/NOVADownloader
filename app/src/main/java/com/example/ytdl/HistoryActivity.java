@@ -156,7 +156,8 @@ public final class HistoryActivity extends Activity {
         });
         sort = selector(new String[]{
                 tr("Newest first", "الأحدث أولاً"), tr("Oldest first", "الأقدم أولاً"),
-                tr("By title", "حسب العنوان")
+                tr("By title", "حسب العنوان"),
+                tr("Group by source", "تجميع حسب المصدر")
         });
         tools.addView(category, new LinearLayout.LayoutParams(0, Ui.dp(this, 49), 1.1f));
         final LinearLayout.LayoutParams sortParams = new LinearLayout.LayoutParams(
@@ -301,6 +302,11 @@ public final class HistoryActivity extends Activity {
             if (selectedCategory == 6 && !possibleDuplicates.contains(task.id)) continue;
             items.add(task);
         }
+        if (sort != null && sort.getSelectedItemPosition() == 3) {
+            final List<DownloadService.Task> grouped = LibraryOrganizer.groupedBySource(items);
+            items.clear();
+            items.addAll(grouped);
+        }
         if (summary != null) {
             summary.setText(tr("✦  " + saved + " saved    ·    " + failed
                             + " need attention\n" + items.size() + " visible items · "
@@ -345,6 +351,38 @@ public final class HistoryActivity extends Activity {
     private void toggleFavorite(final DownloadService.Task task) {
         LibraryFavorites.toggle(this, task);
         refresh();
+    }
+
+    private void reviewPossibleDuplicates(final DownloadService.Task task) {
+        final List<DownloadService.Task> matching =
+                LibraryOrganizer.matchingCopies(DownloadService.snapshot(), task);
+        if (matching.size() < 2) {
+            Toast.makeText(this, tr("No longer a duplicate candidate",
+                    "لم يعد هذا الملف ضمن التكرارات المحتملة"), Toast.LENGTH_SHORT).show();
+            refresh();
+            return;
+        }
+        final String[] labels = new String[matching.size()];
+        for (int i = 0; i < matching.size(); i++) {
+            final DownloadService.Task item = matching.get(i);
+            labels[i] = (item.id == task.id ? tr("Current: ", "الحالي: ") : "")
+                    + (item.title == null ? tr("Untitled", "بدون عنوان") : item.title)
+                    + " · #" + item.id + " · " + item.formatLabel();
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(tr("Review possible copies", "مراجعة النسخ المحتملة"))
+                .setMessage(tr(
+                        "Matched by download metadata, not by file contents. "
+                                + "Nothing will be deleted or changed.",
+                        "التشابه مبني على بيانات التنزيل وليس على محتوى الملف. "
+                                + "لن يتم حذف أو تعديل أي شيء."))
+                .setItems(labels, (dialog, index) -> {
+                    final DownloadService.Task chosen = matching.get(index);
+                    if (LocalMediaPlayerActivity.canPlay(chosen)) playSaved(chosen);
+                    else if (chosen.outputUri != null) openSaved(chosen);
+                })
+                .setNegativeButton(tr("Close", "إغلاق"), null)
+                .show();
     }
 
     private void shareSaved(final DownloadService.Task task) {
@@ -432,6 +470,10 @@ public final class HistoryActivity extends Activity {
                 if (LocalMediaPlayerActivity.canPlay(task)) {
                     actions.addView(action(tr("Open externally", "فتح خارجي"), Ui.MUTED,
                             v -> openSaved(task)));
+                }
+                if (possibleDuplicates.contains(task.id)) {
+                    actions.addView(action(tr("Review copies", "مراجعة النسخ"), Ui.SECONDARY,
+                            v -> reviewPossibleDuplicates(task)));
                 }
                 actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT,
                         v -> shareSaved(task)));
