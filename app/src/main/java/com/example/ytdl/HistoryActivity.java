@@ -156,7 +156,8 @@ public final class HistoryActivity extends Activity {
         });
         sort = selector(new String[]{
                 tr("Newest first", "الأحدث أولاً"), tr("Oldest first", "الأقدم أولاً"),
-                tr("By title", "حسب العنوان")
+                tr("By title", "حسب العنوان"),
+                tr("Group by source", "تجميع حسب المصدر")
         });
         tools.addView(category, new LinearLayout.LayoutParams(0, Ui.dp(this, 49), 1.1f));
         final LinearLayout.LayoutParams sortParams = new LinearLayout.LayoutParams(
@@ -301,6 +302,11 @@ public final class HistoryActivity extends Activity {
             if (selectedCategory == 6 && !possibleDuplicates.contains(task.id)) continue;
             items.add(task);
         }
+        if (sort != null && sort.getSelectedItemPosition() == 3) {
+            final List<DownloadService.Task> grouped = LibraryOrganizer.groupedBySource(items);
+            items.clear();
+            items.addAll(grouped);
+        }
         if (summary != null) {
             summary.setText(tr("✦  " + saved + " saved    ·    " + failed
                             + " need attention\n" + items.size() + " visible items · "
@@ -345,6 +351,45 @@ public final class HistoryActivity extends Activity {
     private void toggleFavorite(final DownloadService.Task task) {
         LibraryFavorites.toggle(this, task);
         refresh();
+    }
+
+    private String sourceLabel(final int sourceId) {
+        switch (sourceId) {
+            case LibraryOrganizer.YOUTUBE: return tr("YouTube", "يوتيوب");
+            case LibraryOrganizer.SOUNDCLOUD: return tr("SoundCloud", "ساوندكلاود");
+            case LibraryOrganizer.X: return tr("X / Twitter", "إكس / تويتر");
+            case LibraryOrganizer.SPOTIFY: return tr("Spotify", "سبوتيفاي");
+            case LibraryOrganizer.LOCAL: return tr("Local imports", "ملفات مستوردة");
+            default: return tr("Other", "أخرى");
+        }
+    }
+
+    private void reviewPossibleDuplicates(final DownloadService.Task task) {
+        final List<DownloadService.Task> matching =
+                LibraryOrganizer.matchingCopies(DownloadService.snapshot(), task);
+        if (matching.size() < 2) {
+            Toast.makeText(this, tr("No longer a duplicate candidate",
+                    "لم يعد هذا الملف ضمن التكرارات المحتملة"), Toast.LENGTH_SHORT).show();
+            refresh();
+            return;
+        }
+        final String[] labels = new String[matching.size()];
+        for (int i = 0; i < matching.size(); i++) {
+            final DownloadService.Task item = matching.get(i);
+            labels[i] = (item.id == task.id ? tr("Current: ", "الحالي: ") : "")
+                    + (item.title == null ? tr("Untitled", "بدون عنوان") : item.title)
+                    + " · #" + item.id + " · " + item.formatLabel();
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(tr("Possible copies (metadata only, no deletion)",
+                        "نسخ محتملة (حسب البيانات فقط، دون حذف)"))
+                .setItems(labels, (dialog, index) -> {
+                    final DownloadService.Task chosen = matching.get(index);
+                    if (LocalMediaPlayerActivity.canPlay(chosen)) playSaved(chosen);
+                    else if (chosen.outputUri != null) openSaved(chosen);
+                })
+                .setNegativeButton(tr("Close", "إغلاق"), null)
+                .show();
     }
 
     private void shareSaved(final DownloadService.Task task) {
@@ -433,6 +478,10 @@ public final class HistoryActivity extends Activity {
                     actions.addView(action(tr("Open externally", "فتح خارجي"), Ui.MUTED,
                             v -> openSaved(task)));
                 }
+                if (possibleDuplicates.contains(task.id)) {
+                    actions.addView(action(tr("Review copies", "مراجعة النسخ"), Ui.SECONDARY,
+                            v -> reviewPossibleDuplicates(task)));
+                }
                 actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT,
                         v -> shareSaved(task)));
                 final boolean starred = LibraryFavorites.isFavorite(HistoryActivity.this, task);
@@ -447,7 +496,20 @@ public final class HistoryActivity extends Activity {
                 card.addView(actionScroll);
             }
             final LinearLayout wrap = new LinearLayout(HistoryActivity.this);
+            wrap.setOrientation(LinearLayout.VERTICAL);
             wrap.setPadding(0, 0, 0, Ui.dp(HistoryActivity.this, 11));
+            if (sort != null && sort.getSelectedItemPosition() == 3) {
+                final int currentSource = LibraryOrganizer.sourceOf(task);
+                final boolean firstInGroup = position == 0
+                        || LibraryOrganizer.sourceOf(items.get(position - 1)) != currentSource;
+                if (firstInGroup) {
+                    final TextView groupTitle = Ui.eyebrow(HistoryActivity.this,
+                            sourceLabel(currentSource));
+                    groupTitle.setPadding(0, Ui.dp(HistoryActivity.this, 10),
+                            0, Ui.dp(HistoryActivity.this, 12));
+                    wrap.addView(groupTitle, new LinearLayout.LayoutParams(-1, -2));
+                }
+            }
             wrap.addView(card, new LinearLayout.LayoutParams(-1, -2));
             return wrap;
         }
