@@ -353,6 +353,17 @@ public final class HistoryActivity extends Activity {
         refresh();
     }
 
+    private String sourceLabel(final int sourceId) {
+        switch (sourceId) {
+            case LibraryOrganizer.YOUTUBE: return tr("YouTube", "يوتيوب");
+            case LibraryOrganizer.SOUNDCLOUD: return tr("SoundCloud", "ساوندكلاود");
+            case LibraryOrganizer.X: return tr("X / Twitter", "إكس / تويتر");
+            case LibraryOrganizer.SPOTIFY: return tr("Spotify", "سبوتيفاي");
+            case LibraryOrganizer.LOCAL: return tr("Local imports", "ملفات مستوردة");
+            default: return tr("Other", "أخرى");
+        }
+    }
+
     private void reviewPossibleDuplicates(final DownloadService.Task task) {
         final List<DownloadService.Task> matching =
                 LibraryOrganizer.matchingCopies(DownloadService.snapshot(), task);
@@ -370,12 +381,8 @@ public final class HistoryActivity extends Activity {
                     + " · #" + item.id + " · " + item.formatLabel();
         }
         new android.app.AlertDialog.Builder(this)
-                .setTitle(tr("Review possible copies", "مراجعة النسخ المحتملة"))
-                .setMessage(tr(
-                        "Matched by download metadata, not by file contents. "
-                                + "Nothing will be deleted or changed.",
-                        "التشابه مبني على بيانات التنزيل وليس على محتوى الملف. "
-                                + "لن يتم حذف أو تعديل أي شيء."))
+                .setTitle(tr("Possible copies (metadata only, no deletion)",
+                        "نسخ محتملة (حسب البيانات فقط، دون حذف)"))
                 .setItems(labels, (dialog, index) -> {
                     final DownloadService.Task chosen = matching.get(index);
                     if (LocalMediaPlayerActivity.canPlay(chosen)) playSaved(chosen);
@@ -489,7 +496,20 @@ public final class HistoryActivity extends Activity {
                 card.addView(actionScroll);
             }
             final LinearLayout wrap = new LinearLayout(HistoryActivity.this);
+            wrap.setOrientation(LinearLayout.VERTICAL);
             wrap.setPadding(0, 0, 0, Ui.dp(HistoryActivity.this, 11));
+            if (sort != null && sort.getSelectedItemPosition() == 3) {
+                final int currentSource = LibraryOrganizer.sourceOf(task);
+                final boolean firstInGroup = position == 0
+                        || LibraryOrganizer.sourceOf(items.get(position - 1)) != currentSource;
+                if (firstInGroup) {
+                    final TextView groupTitle = Ui.eyebrow(HistoryActivity.this,
+                            sourceLabel(currentSource));
+                    groupTitle.setPadding(0, Ui.dp(HistoryActivity.this, 10),
+                            0, Ui.dp(HistoryActivity.this, 12));
+                    wrap.addView(groupTitle, new LinearLayout.LayoutParams(-1, -2));
+                }
+            }
             wrap.addView(card, new LinearLayout.LayoutParams(-1, -2));
             return wrap;
         }
