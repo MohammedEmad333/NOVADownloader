@@ -88,6 +88,54 @@ public final class LibraryOrganizerTest {
         assertTrue(LibraryOrganizer.possibleDuplicateIds(Collections.emptyList()).isEmpty());
     }
 
+    @Test public void matchingCopiesAreReadOnlyAndRequireDifferentUris() {
+        final DownloadService.Task first = saved("https://youtu.be/one",
+                "content://media/external/downloads/901", "video/mp4");
+        final DownloadService.Task second = saved("https://youtu.be/one",
+                "content://media/external/downloads/902", "video/mp4");
+        final DownloadService.Task other = saved("https://youtu.be/two",
+                "content://media/external/downloads/903", "video/mp4");
+        final java.util.List<DownloadService.Task> originals =
+                Arrays.asList(first, other, second);
+        final java.util.List<DownloadService.Task> matches =
+                LibraryOrganizer.matchingCopies(originals, first);
+        assertEquals(Arrays.asList(first, second), matches);
+        assertEquals(Arrays.asList(first, other, second), originals);
+        assertEquals(DownloadService.State.DONE, first.state);
+
+        second.outputUri = first.outputUri;
+        assertTrue(LibraryOrganizer.matchingCopies(originals, first).isEmpty());
+        second.outputUri = "content://media/external/downloads/902";
+        second.state = DownloadService.State.FAILED;
+        assertTrue(LibraryOrganizer.matchingCopies(originals, first).isEmpty());
+    }
+
+    @Test public void sourceGroupingPreservesNewestWithinSourceAndQueueOrder() {
+        final DownloadService.Task sound = saved("https://soundcloud.com/a/b",
+                "content://media/external/downloads/921", "audio/mp4");
+        final DownloadService.Task youtubeOld = saved("https://youtu.be/1",
+                "content://media/external/downloads/922", "video/mp4");
+        final DownloadService.Task youtubeNew = saved("https://youtube.com/watch?v=2",
+                "content://media/external/downloads/923", "video/mp4");
+        final DownloadService.Task imported = saved("local-import://video/45",
+                "content://media/external/video/media/924", "video/mp4");
+        final java.util.List<DownloadService.Task> original =
+                Arrays.asList(sound, youtubeOld, imported, youtubeNew);
+        assertEquals(Arrays.asList(youtubeNew, youtubeOld, sound, imported),
+                LibraryOrganizer.groupedBySource(original));
+        assertEquals(Arrays.asList(sound, youtubeOld, imported, youtubeNew), original);
+    }
+
+    @Test public void matchingCopiesRejectsMissingInputAndUnverifiedFiles() {
+        final DownloadService.Task untrusted = saved("https://youtu.be/one",
+                "content://other.provider/downloads/12", "video/mp4");
+        assertTrue(LibraryOrganizer.matchingCopies(null, untrusted).isEmpty());
+        assertTrue(LibraryOrganizer.matchingCopies(
+                Arrays.asList(untrusted), untrusted).isEmpty());
+        assertTrue(LibraryOrganizer.matchingCopies(
+                Arrays.asList(untrusted), null).isEmpty());
+    }
+
     @Test public void importedFilesNeedMatchingNameAndSize() {
         final DownloadService.Task a = saved("local-import://video/1",
                 "content://media/external/video/media/801", "video/mp4");
