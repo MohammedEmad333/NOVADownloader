@@ -299,6 +299,19 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   suggestions. Other library search, sorting, favorites and playback stay intact.
 - Robolectric tests cover source host classification and conservative duplicates.
 
+## NOVA 1.7.6: source groups and safe copy review
+
+- Library sorting adds **Group by source**, with visible source headings and
+  newest downloads first within each source. Existing filters, search and sort
+  choices are unchanged.
+- The **Review copies** action appears on possible duplicate entries. A
+  read-only dialog lists matching saved items and opens a selected copy in
+  NOVA's player or an external viewer, so users can compare them.
+- Matches use the existing conservative metadata rules, not content hashes.
+  The dialog never deletes, moves, modifies or deduplicates any files.
+- Unit tests check stable source grouping, unchanged queue order, candidate
+  grouping and exclusion of untrusted or unfinished items.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
