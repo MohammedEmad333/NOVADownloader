@@ -21,12 +21,13 @@ public final class DownloadConnectivityTest {
     }
 
     @Test public void capabilityCheckDoesNotMistakeAnyNetworkForInternet() {
-        final NetworkCapabilities missing = new NetworkCapabilities();
-        missing.removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+        final NetworkCapabilities missing = new NetworkCapabilities.Builder()
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build();
+        final NetworkCapabilities allowed = new NetworkCapabilities.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build();
         assertFalse(DownloadConnectivity.hasInternet(null));
         assertFalse(DownloadConnectivity.hasInternet(missing));
-        missing.addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-        assertTrue(DownloadConnectivity.hasInternet(missing));
+        assertTrue(DownloadConnectivity.hasInternet(allowed));
     }
 
     @Test public void connectionReminderIsRateLimitedAndRequiresQueuedWork() {
