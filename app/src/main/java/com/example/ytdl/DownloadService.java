@@ -337,6 +337,8 @@ public class DownloadService extends Service {
     private static final Object IO_LOCK = new Object();
     private static boolean loaded;
     private ConnectivityManager.NetworkCallback networkCallback;
+    private volatile boolean foregroundReady;
+    private volatile boolean serviceStopping;
 
     /**
      * Reads the queue back from disk. Called from both the activity and the service, since
@@ -510,7 +512,9 @@ public class DownloadService extends Service {
     /** Start queued work only when the current foreground interaction may start a service. */
     public static void pokeIfReady(final Context context) {
         if (DownloadSchedule.blockedReason(context) != null
-                || (wifiOnly(context) && !isWifiConnected(context))) return;
+                || !DownloadConnectivity.canTransfer(
+                        DownloadConnectivity.connected(context),
+                        wifiOnly(context), isWifiConnected(context))) return;
         for (final Task task : snapshot()) {
             if (task.state == State.QUEUED && !task.cancelled && !task.pauseRequested) {
                 wake(context, null, 0);
@@ -521,6 +525,10 @@ public class DownloadService extends Service {
 
     public static boolean isWifiConnectedForUi(final Context context) {
         return isWifiConnected(context);
+    }
+
+    public static boolean isInternetConnectedForUi(final Context context) {
+        return DownloadConnectivity.connected(context);
     }
 
     private static boolean isWifiConnected(final Context context) {
@@ -750,16 +758,11 @@ public class DownloadService extends Service {
         if (cm != null) {
             networkCallback = new ConnectivityManager.NetworkCallback() {
                 @Override public void onAvailable(final Network network) {
-                    if (!wifiOnly(DownloadService.this) || isWifiConnected(DownloadService.this)) {
-                        wake(DownloadService.this, null, 0);
-                    }
+                    drainWhenNetworkReady();
                 }
                 @Override public void onCapabilitiesChanged(final Network network,
                                                             final NetworkCapabilities caps) {
-                    if (wifiOnly(DownloadService.this)
-                            && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                        wake(DownloadService.this, null, 0);
-                    }
+                    drainWhenNetworkReady();
                 }
             };
             cm.registerDefaultNetworkCallback(networkCallback);
@@ -770,11 +773,29 @@ public class DownloadService extends Service {
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
     }
 
+    /**
+     * Connectivity callbacks can arrive while this service is already foreground.
+     * Resume work here, without trying to start a new data-sync FGS from background.
+     */
+    private void drainWhenNetworkReady() {
+        if (!foregroundReady || serviceStopping
+                || DownloadSchedule.blockedReason(this) != null
+                || !DownloadConnectivity.canTransfer(
+                        DownloadConnectivity.connected(this), wifiOnly(this),
+                        isWifiConnected(this))
+                || nextQueuedIgnoringWifi() == null) return;
+        if (RUNNING.compareAndSet(false, true)) {
+            WORKER.execute(this::drainQueue);
+        }
+    }
+
     @Override
     public int onStartCommand(final Intent intent, final int flags, final int startId) {
         // startForegroundService allows roughly five seconds to reach this before the system
         // kills the process, so it happens before anything that might block.
         startForegroundCompat(buildNotification("Downloads", "Starting…", 0, true, null));
+        foregroundReady = true;
+        serviceStopping = false;
 
         if (intent != null && intent.hasExtra(EXTRA_ACTION)) {
             final Task task = byId(intent.getLongExtra(EXTRA_TASK_ID, -1));
@@ -798,6 +819,7 @@ public class DownloadService extends Service {
 
     @Override
     public void onDestroy() {
+        foregroundReady = false;
         final ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         if (cm != null && networkCallback != null) {
             try { cm.unregisterNetworkCallback(networkCallback); } catch (final Exception ignored) {}
@@ -842,6 +864,7 @@ public class DownloadService extends Service {
                 }
             }
         } finally {
+            serviceStopping = true;
             RUNNING.set(false);
             finish();
         }
@@ -874,10 +897,10 @@ public class DownloadService extends Service {
     }
 
     private Task nextQueued() {
-        if ((wifiOnly(this) && !isWifiConnected(this))
-                || DownloadSchedule.blockedReason(this) != null) {
-            return null;
-        }
+        if (DownloadSchedule.blockedReason(this) != null
+                || !DownloadConnectivity.canTransfer(
+                        DownloadConnectivity.connected(this), wifiOnly(this),
+                        isWifiConnected(this))) return null;
         return nextQueuedIgnoringWifi();
     }
 
@@ -906,12 +929,15 @@ public class DownloadService extends Service {
             }
         }
 
-        final boolean waitingForWifi = wifiOnly(this) && !isWifiConnected(this)
-                && nextQueuedIgnoringWifi() != null;
+        final boolean hasQueued = nextQueuedIgnoringWifi() != null;
+        final boolean waitingForInternet = hasQueued && !DownloadConnectivity.connected(this);
+        final boolean waitingForWifi = hasQueued && wifiOnly(this) && !isWifiConnected(this);
         final StringBuilder summary = new StringBuilder();
         final String scheduleBlock = DownloadSchedule.blockedReason(this);
-        if (scheduleBlock != null && nextQueuedIgnoringWifi() != null) {
+        if (scheduleBlock != null && hasQueued) {
             summary.append(scheduleBlock);
+        } else if (waitingForInternet) {
+            summary.append("Waiting for internet");
         } else if (waitingForWifi) {
             summary.append("Waiting for Wi-Fi");
         } else {
@@ -924,11 +950,19 @@ public class DownloadService extends Service {
             summary.append(" · ").append(paused).append(" paused");
         }
 
+        // Reconnection is a user-visible reminder, not an Android-restricted
+        // background start of the download foreground service.
+        if (waitingForInternet || waitingForWifi) {
+            NetworkRecoveryWorker.schedule(this);
+        }
+
         // DETACH leaves the notification behind as a plain, dismissible summary rather than
         // yanking it the moment the last file lands.
         stopForeground(STOP_FOREGROUND_DETACH);
         getSystemService(NotificationManager.class).notify(NOTIFICATION_ID,
-                buildNotification(paused > 0 ? "Downloads paused" : "Downloads finished",
+                buildNotification(paused > 0 ? "Downloads paused"
+                                : (waitingForInternet || waitingForWifi)
+                                ? "Downloads waiting" : "Downloads finished",
                         summary.toString(), 0, false, null));
         stopSelf();
     }
@@ -937,21 +971,19 @@ public class DownloadService extends Service {
 
     private void process(final Task task) {
         final Net.Control control = () -> {
-            if (DownloadSchedule.blockedReason(this) != null) {
+            // A user cancel/pause must win over a simultaneous network loss.
+            if (task.cancelled) throw new Net.Cancelled();
+            if (task.pauseRequested) throw new Net.Paused();
+            if (DownloadSchedule.blockedReason(this) != null
+                    || !DownloadConnectivity.canTransfer(
+                            DownloadConnectivity.connected(this), wifiOnly(this),
+                            isWifiConnected(this))) {
                 throw new Net.NetworkBlocked();
-            }
-            if (wifiOnly(this) && !isWifiConnected(this)) {
-                throw new Net.NetworkBlocked();
-            }
-            if (task.cancelled) {
-                throw new Net.Cancelled();
-            }
-            if (task.pauseRequested) {
-                throw new Net.Paused();
             }
         };
 
         try {
+            control.checkpoint();
             // Playlist items arrive with nothing but a page URL and an intention.
             if (task.videoUrl == null) {
                 resolve(task);
@@ -974,13 +1006,18 @@ public class DownloadService extends Service {
             task.state = State.DONE;
         } catch (final Net.NetworkBlocked e) {
             task.state = State.QUEUED;
+            task.error = null;
         } catch (final Net.Paused e) {
             task.state = State.PAUSED;
+            task.error = null;
         } catch (final Net.Cancelled e) {
             task.state = State.CANCELLED;
         } catch (final Exception e) {
-            task.state = State.FAILED;
-            task.error = e.getMessage() == null ? e.toString() : e.getMessage();
+            task.state = stateAfterUnexpectedFailure(task, DownloadConnectivity.connected(this));
+            // Transient connectivity loss is not a permanent failed download.
+            // Preserve both queue state and the resumable temp file in that case.
+            task.error = task.state == State.FAILED
+                    ? (e.getMessage() == null ? e.toString() : e.getMessage()) : null;
         } finally {
             // The one case where temp files are kept: they're the resume point.
             if (task.state != State.PAUSED && task.state != State.QUEUED) {
@@ -989,6 +1026,13 @@ public class DownloadService extends Service {
             update(task);
             save(this);
         }
+    }
+
+    /** Classify an unexpected I/O or extraction failure at the moment it occurs. */
+    static State stateAfterUnexpectedFailure(final Task task, boolean internetAvailable) {
+        if (task != null && task.cancelled) return State.CANCELLED;
+        if (task != null && task.pauseRequested) return State.PAUSED;
+        return internetAvailable ? State.FAILED : State.QUEUED;
     }
 
     /**
