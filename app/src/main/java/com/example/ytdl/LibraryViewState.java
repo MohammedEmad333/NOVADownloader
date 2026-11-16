@@ -11,18 +11,21 @@ final class LibraryViewState {
     private static final String CATEGORY = "category";
     private static final String SORT = "sort";
     private static final String SOURCE = "source";
+    private static final String GRID = "grid";
 
     static final class State {
         final String search;
         final int category;
         final int sort;
         final int source;
+        final boolean grid;
 
-        State(String search, int category, int sort, int source) {
+        State(String search, int category, int sort, int source, boolean grid) {
             this.search = search;
             this.category = category;
             this.sort = sort;
             this.source = source;
+            this.grid = grid;
         }
     }
 
@@ -47,15 +50,22 @@ final class LibraryViewState {
         return new State(limited(saved.getString(SEARCH, "")),
                 within(saved.getInt(CATEGORY, 0), 6),
                 within(saved.getInt(SORT, 0), 3),
-                within(saved.getInt(SOURCE, 0), 6));
+                within(saved.getInt(SOURCE, 0), 6),
+                saved.getBoolean(GRID, false));
     }
 
     static void save(Context context, String search, int category, int sort, int source) {
+        save(context, search, category, sort, source, false);
+    }
+
+    static void save(Context context, String search, int category, int sort,
+                     int source, boolean grid) {
         prefs(context).edit()
                 .putString(SEARCH, limited(search))
                 .putInt(CATEGORY, within(category, 6))
                 .putInt(SORT, within(sort, 3))
                 .putInt(SOURCE, within(source, 6))
+                .putBoolean(GRID, grid)
                 .apply();
     }
 }
