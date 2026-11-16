@@ -350,6 +350,28 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - No new permissions, deletion, automatic cleanup, or changes to the download
   engine. Verification on physical devices is still recommended.
 
+## NOVA 1.7.9: connection recovery and queued download resilience
+
+- Check for a connected network before starting queued transfers. Ordinary
+  internet loss (not just Wi-Fi-only loss) now leaves interrupted tasks queued
+  with their partial files intact rather than failing and deleting the bytes.
+- Network loss while resolving metadata is also treated as recoverable when the
+  connection is actually unavailable. Permanent errors on a connected network
+  still fail normally; the existing bounded HTTP retries are unchanged.
+- User cancellation and pause take precedence over simultaneous network loss.
+  The existing crash recovery still restores interrupted active tasks as paused
+  so NOVA never silently overrides an intentional pause.
+- Network callbacks resume the worker only while the existing foreground
+  service is running. After a disconnect and service stop, a one-time
+  WorkManager reminder waits for connectivity and invites the user to open
+  NOVA. Android background foreground-service restrictions are respected.
+- Transfers resume on an eligible foreground visit; the app does not silently
+  start background downloads after an offline period. The queue UI displays
+  localized internet/Wi-Fi waiting messages.
+- Regression tests cover offline policy decisions, cancellation/pausing
+  precedence, recovery prompts and restored task state. No new permissions,
+  accounts, automatic deletion or unsupported network bypass.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

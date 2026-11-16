@@ -1875,9 +1875,17 @@ public class MainActivity extends Activity {
         }
 
         if (queueSummary != null) {
-            final boolean waitingForWifi = DownloadService.wifiOnly(this)
-                    && waiting > 0 && !DownloadService.isWifiConnectedForUi(this);
-            queueSummary.setText((waitingForWifi ? "Waiting for Wi-Fi · " : "")
+            final boolean waitingForInternet = waiting > 0
+                    && !DownloadService.isInternetConnectedForUi(this);
+            final boolean waitingForWifi = !waitingForInternet
+                    && DownloadService.wifiOnly(this) && waiting > 0
+                    && !DownloadService.isWifiConnectedForUi(this);
+            queueSummary.setText((waitingForInternet
+                    ? NovaPreferences.text(this, "Waiting for internet · ",
+                            "بانتظار الإنترنت · ")
+                    : waitingForWifi
+                    ? NovaPreferences.text(this, "Waiting for Wi-Fi · ",
+                            "بانتظار واي فاي · ") : "")
                     + (DownloadService.isPauseAfterCurrentPending()
                     ? "Pause after current armed · " : "")
                     + active + " active · " + waiting + " waiting · "

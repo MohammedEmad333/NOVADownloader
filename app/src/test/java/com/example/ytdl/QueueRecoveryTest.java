@@ -56,6 +56,36 @@ public class QueueRecoveryTest {
         assertEquals(DownloadService.State.PAUSED, restored.tasks.get(0).state);
     }
 
+    @Test public void queuedWorkSurvivesRestartWhileActiveTaskRequiresManualResume()
+            throws Exception {
+        final JSONArray input = new JSONArray();
+        input.put(task(40, "VIDEO"));
+        input.put(task(41, "QUEUED"));
+        input.put(task(42, "PAUSED"));
+        final DownloadService.RestoredQueue restored = DownloadService.decodeQueue(input);
+        assertEquals(3, restored.tasks.size());
+        assertEquals(DownloadService.State.PAUSED, restored.tasks.get(0).state);
+        assertEquals(DownloadService.State.QUEUED, restored.tasks.get(1).state);
+        assertEquals(DownloadService.State.PAUSED, restored.tasks.get(2).state);
+        assertEquals(43L, restored.nextId);
+    }
+
+    @Test public void offlineErrorsRequeueAndRespectUserActions() {
+        final DownloadService.Task item = new DownloadService.Task(
+                "https://example.com/watch", "Sample",
+                DownloadService.Spec.muxed(720, "720p"));
+        assertEquals(DownloadService.State.QUEUED,
+                DownloadService.stateAfterUnexpectedFailure(item, false));
+        assertEquals(DownloadService.State.FAILED,
+                DownloadService.stateAfterUnexpectedFailure(item, true));
+        item.pauseRequested = true;
+        assertEquals(DownloadService.State.PAUSED,
+                DownloadService.stateAfterUnexpectedFailure(item, false));
+        item.cancelled = true;
+        assertEquals(DownloadService.State.CANCELLED,
+                DownloadService.stateAfterUnexpectedFailure(item, false));
+    }
+
     @Test public void badOrOverflowingIdsAreRejected() throws Exception {
         final JSONArray array = new JSONArray();
         array.put(task(-1, "DONE"));
