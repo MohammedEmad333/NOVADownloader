@@ -1058,11 +1058,8 @@ public class DownloadService extends Service {
 
         if (TwitterVideo.isPostUrl(task.pageUrl)) {
             final TwitterVideo.Post post = TwitterVideo.fetch(task.pageUrl);
-            final int index = TwitterVideo.selectedIndex(task.pageUrl);
-            if (index >= post.videos.size()) {
-                throw new IOException("Selected X video is no longer available");
-            }
-            final TwitterVideo.Video video = post.videos.get(index);
+            final TwitterVideo.Video video =
+                    TwitterVideo.selectedVideo(post, task.pageUrl);
             task.preResolve(video.url, null, "mp4", "video/mp4");
             task.title = Streams.sanitize(post.title
                     + (post.videos.size() > 1 ? " - Video " + (index + 1) : ""));

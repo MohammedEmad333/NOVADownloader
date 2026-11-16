@@ -407,6 +407,24 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   cover persistence, safe membership identity, batch selection and share grants.
 - This update adds no permissions and no file or download deletion features.
 
+## NOVA 1.8.2: public source quality and feedback
+
+- X public posts now show distinct safe MP4 quality choices when the public
+  metadata provider publishes different bitrates. Clip identity remains stable.
+- Quality selection is stored as a bounded bitrate token rather than a signed
+  stream URL and is validated against fresh public metadata upon resume.
+  If the chosen quality disappears, the task fails visibly instead of silently
+  changing quality. Existing queued X items keep their default best-quality
+  behavior.
+- HLS remains an explicitly labelled fallback for public, supported playlists.
+  Private, encrypted, DRM-protected, login-restricted and unsupported streams
+  are not bypassed.
+- Localized, actionable error messages distinguish unavailable public media,
+  metadata service failures, network outages, invalid links and rate limits.
+  Raw provider error details are not shown in the main lookup status.
+- New Robolectric tests cover safe variant choice, persisted quality selection,
+  stale selections, and bilingual failure guidance. No new permissions.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

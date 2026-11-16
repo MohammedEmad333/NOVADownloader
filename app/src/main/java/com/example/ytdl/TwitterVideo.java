@@ -150,6 +150,16 @@ final class TwitterVideo {
     }
 
     /** No signed URLs, query strings or access tokens are persisted in the choice. */
+    static String qualityTokenForUrl(String videoUrl, int height) {
+        if (!isSafeMp4Url(videoUrl)) return null;
+        final String path = Uri.parse(videoUrl).getPath();
+        if (path == null) return null;
+        final java.util.regex.Matcher size = java.util.regex.Pattern
+                .compile("/([1-9][0-9]{1,3})x([1-9][0-9]{1,3})/")
+                .matcher(path);
+        return size.find() ? "r" + size.group(1) + "x" + size.group(2) : null;
+    }
+
     static String qualityToken(Video video) {
         if (video == null || !isSafeMp4Url(video.url)) return null;
         if (video.bitrate > 0 && video.bitrate <= 999_999_999) return "b" + video.bitrate;
