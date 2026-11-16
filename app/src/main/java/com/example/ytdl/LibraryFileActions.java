@@ -31,11 +31,12 @@ final class LibraryFileActions {
     static Intent shareIntent(DownloadService.Task task) {
         if (!eligible(task)) return null;
         final Uri uri = Uri.parse(task.outputUri);
-        return new Intent(Intent.ACTION_SEND)
+        final Intent intent = new Intent(Intent.ACTION_SEND)
                 .setType(safeMimeType(task.mimeType))
-                .putExtra(Intent.EXTRA_STREAM, uri)
-                .setClipData(ClipData.newRawUri("NOVA saved media", uri))
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                .putExtra(Intent.EXTRA_STREAM, uri);
+        intent.setClipData(ClipData.newRawUri("NOVA saved media", uri));
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return intent;
     }
 
     static String safeMimeType(String raw) {
