@@ -22,6 +22,12 @@ import android.widget.GridView;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.CheckBox;
+import android.app.AlertDialog;
+import android.text.InputFilter;
+import android.content.DialogInterface;
+import java.util.HashSet;
+import java.util.Arrays;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,6 +54,16 @@ public final class HistoryActivity extends Activity {
     private Button viewButton;
     private final List<TextView> quickFilters = new ArrayList<>();
     private boolean gridMode;
+    private final LibrarySelection selection = new LibrarySelection();
+    private List<LibraryCollections.Collection> collections = Collections.emptyList();
+    private String activeCollectionId;
+    private Spinner collectionsFilter;
+    private Button manageCollections;
+    private Button selectionToggle;
+    private LinearLayout batchControls;
+    private TextView batchSummary;
+    private boolean selectionMode;
+    private boolean rebuildingCollectionFilter;
     private LibrarySnapshot catalog = LibrarySnapshot.EMPTY;
     private Set<Long> possibleDuplicates = Collections.emptySet();
     private Map<String, LibraryFileStatus.State> fileStatuses = Collections.emptyMap();
@@ -102,6 +118,7 @@ public final class HistoryActivity extends Activity {
                 if (generation != fileScanGeneration || isFinishing() || isDestroyed()) return;
                 fileStatuses = result;
                 fileScan = null;
+                selection.retainValid(catalog.tasks, fileStatuses);
                 renderLibrary();
             });
         }, "nova-library-file-check");
@@ -254,6 +271,63 @@ public final class HistoryActivity extends Activity {
         });
         updateAdvancedButton();
 
+        final LinearLayout collectionRow = new LinearLayout(this);
+        collectionRow.setOrientation(LinearLayout.HORIZONTAL);
+        collectionsFilter = selector(new String[]{tr("All collections", "كل المجموعات")});
+        collectionRow.addView(collectionsFilter,
+                new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
+        manageCollections = Ui.button(this, tr("Manage", "إدارة"), false);
+        final LinearLayout.LayoutParams manageParams =
+                new LinearLayout.LayoutParams(-2, Ui.dp(this, 48));
+        manageParams.leftMargin = Ui.dp(this, 7);
+        collectionRow.addView(manageCollections, manageParams);
+        final LinearLayout.LayoutParams collectionParams =
+                new LinearLayout.LayoutParams(-1, -2);
+        collectionParams.topMargin = Ui.dp(this, 10);
+        collectionParams.bottomMargin = Ui.dp(this, 10);
+        root.addView(collectionRow, collectionParams);
+        manageCollections.setOnClickListener(v -> showCollectionManager());
+        collectionsFilter.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view,
+                                                  int position, long id) {
+                if (rebuildingCollectionFilter) return;
+                activeCollectionId = position <= 0 || position > collections.size()
+                        ? null : collections.get(position - 1).id;
+                renderLibrary();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        selectionToggle = Ui.button(this, tr("Select files", "تحديد ملفات"), false);
+        selectionToggle.setContentDescription(tr("Select saved files for safe batch actions",
+                "تحديد الملفات المحفوظة لإجراءات جماعية آمنة"));
+        selectionToggle.setOnClickListener(v -> {
+            selectionMode = !selectionMode;
+            if (!selectionMode) selection.clear();
+            updateBatchControls();
+            renderLibrary();
+        });
+        root.addView(selectionToggle, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+        batchControls = new LinearLayout(this);
+        batchControls.setOrientation(LinearLayout.VERTICAL);
+        batchControls.setPadding(0, Ui.dp(this, 7), 0, Ui.dp(this, 9));
+        batchSummary = Ui.sans(this, 13, Ui.TEXT);
+        batchSummary.setMinHeight(Ui.dp(this, 32));
+        batchControls.addView(batchSummary);
+        final LinearLayout batchRow = new LinearLayout(this);
+        batchRow.setOrientation(LinearLayout.HORIZONTAL);
+        addBatchButton(batchRow, tr("Select visible", "حدد الظاهر"), v -> selectVisible());
+        addBatchButton(batchRow, tr("Favorite", "المفضلة"), v -> favoriteSelection());
+        batchControls.addView(batchRow);
+        final LinearLayout batchRow2 = new LinearLayout(this);
+        batchRow2.setOrientation(LinearLayout.HORIZONTAL);
+        addBatchButton(batchRow2, tr("Collections", "المجموعات"),
+                v -> chooseCollectionForSelection());
+        addBatchButton(batchRow2, tr("Share", "مشاركة"), v -> shareSelection());
+        batchControls.addView(batchRow2);
+        root.addView(batchControls);
+        updateBatchControls();
+        restoreCollections(null);
+
         final LinearLayout tools = new LinearLayout(this);
         tools.setOrientation(LinearLayout.HORIZONTAL);
         category = selector(new String[]{
@@ -313,6 +387,16 @@ public final class HistoryActivity extends Activity {
         final AdapterView.OnItemClickListener openEntry = (parent, view, position, id) -> {
             if (position >= items.size()) return;
             final DownloadService.Task task = items.get(position);
+            if (selectionMode) {
+                if (!selection.toggle(task, fileStatuses.get(task.outputUri))) {
+                    Toast.makeText(this, tr("Choose a saved, available file (limit 100)",
+                            "اختر ملفًا محفوظًا ومتاحًا (بحد أقصى 100)"),
+                            Toast.LENGTH_SHORT).show();
+                }
+                updateBatchControls();
+                renderLibrary();
+                return;
+            }
             if (task.state == DownloadService.State.FAILED
                     || task.state == DownloadService.State.CANCELLED) {
                 DownloadService.retry(this, task);
@@ -479,6 +563,8 @@ public final class HistoryActivity extends Activity {
         // MediaStore. Typing and changing selectors reuse cached metadata.
         catalog = LibrarySnapshot.capture(DownloadService.snapshot());
         possibleDuplicates = catalog.possibleDuplicates;
+        selection.retainValid(catalog.tasks, fileStatuses);
+        restoreCollections(activeCollectionId);
         renderLibrary();
         verifyFilesInBackground();
     }
@@ -488,13 +574,17 @@ public final class HistoryActivity extends Activity {
         final int selectedSource = source == null ? 0 : source.getSelectedItemPosition();
         final int selectedSort = sort == null ? 0 : sort.getSelectedItemPosition();
         final String query = search == null ? "" : search.getText().toString();
+        final LibraryCollections.Collection active =
+                LibraryCollections.byId(collections, activeCollectionId);
         final List<DownloadService.Task> filtered = LibraryFilter.select(
                 catalog.tasks, query,
                 selectedCategory == 6 ? LibraryFilter.ALL : selectedCategory,
                 selectedSort, task -> LibraryFavorites.isFavorite(this, task),
                 selectedSource, selectedCategory == 6 ? possibleDuplicates : null);
         items.clear();
-        items.addAll(filtered);
+        for (DownloadService.Task task : filtered) {
+            if (active == null || active.contains(task)) items.add(task);
+        }
         if (summary != null) {
             int missing = 0;
             int denied = 0;
@@ -515,6 +605,223 @@ public final class HistoryActivity extends Activity {
         }
         if (adapter != null) adapter.notifyDataSetChanged();
         updateLayoutControls();
+        updateBatchControls();
+    }
+
+    private void addBatchButton(LinearLayout row, String label,
+                                View.OnClickListener listener) {
+        final Button button = Ui.button(this, label, false);
+        button.setTextSize(Ui.size(12));
+        button.setOnClickListener(listener);
+        final LinearLayout.LayoutParams params =
+                new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f);
+        params.rightMargin = Ui.dp(this, 5);
+        row.addView(button, params);
+    }
+
+    private void updateBatchControls() {
+        if (batchControls != null) batchControls.setVisibility(
+                selectionMode ? View.VISIBLE : View.GONE);
+        if (selectionToggle != null) selectionToggle.setText(selectionMode
+                ? tr("Done selecting", "إنهاء التحديد")
+                : tr("Select files", "تحديد ملفات"));
+        if (batchSummary != null) batchSummary.setText(tr(
+                selection.size() + " selected · files are never deleted",
+                selection.size() + " محددة · لن يتم حذف الملفات"));
+    }
+
+    private List<DownloadService.Task> selectedFiles() {
+        return selection.resolve(catalog.tasks, fileStatuses);
+    }
+
+    private void selectVisible() {
+        int count = 0;
+        for (DownloadService.Task task : items) {
+            if (selection.size() >= LibrarySelection.MAX_SELECTED) break;
+            if (!selection.contains(task)
+                    && selection.toggle(task, fileStatuses.get(task.outputUri))) count++;
+        }
+        updateBatchControls();
+        renderLibrary();
+        Toast.makeText(this, tr(count + " added to selection",
+                "تم تحديد " + count + " ملف إضافي"), Toast.LENGTH_SHORT).show();
+    }
+
+    private void favoriteSelection() {
+        final List<DownloadService.Task> files = selectedFiles();
+        if (files.isEmpty()) { showSelectionRequired(); return; }
+        int changed = 0;
+        for (DownloadService.Task task : files) {
+            if (!LibraryFavorites.isFavorite(this, task)) {
+                LibraryFavorites.toggle(this, task);
+                changed++;
+            }
+        }
+        renderLibrary();
+        Toast.makeText(this, tr(changed + " added to Favorites",
+                "أضيف " + changed + " إلى المفضلة"), Toast.LENGTH_SHORT).show();
+    }
+
+    private void shareSelection() {
+        final List<DownloadService.Task> files = selectedFiles();
+        if (files.isEmpty()) { showSelectionRequired(); return; }
+        final Intent intent = LibraryBatchActions.shareIntent(files);
+        if (intent == null) {
+            Toast.makeText(this, tr("Select 1–50 valid files to share",
+                    "حدد من ملف واحد إلى 50 ملفًا صالحًا للمشاركة"), Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            startActivity(Intent.createChooser(intent, tr("Share saved media",
+                    "مشاركة الملفات المحفوظة")));
+        } catch (RuntimeException error) {
+            Toast.makeText(this, tr("No app can share these files",
+                    "لا يوجد تطبيق متاح لمشاركة هذه الملفات"), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void showSelectionRequired() {
+        Toast.makeText(this, tr("Select saved files first", "حدد ملفات محفوظة أولًا"),
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void restoreCollections(String preferredId) {
+        try {
+            collections = LibraryCollections.list(this);
+        } catch (IllegalStateException failure) {
+            collections = Collections.emptyList();
+            Toast.makeText(this, tr("Collection labels cannot be read; no files changed",
+                    "تعذرت قراءة المجموعات؛ لم يتم تعديل أي ملف"), Toast.LENGTH_LONG).show();
+        }
+        if (collectionsFilter == null) return;
+        final String[] labels = new String[collections.size() + 1];
+        labels[0] = tr("All collections", "كل المجموعات");
+        int chosen = 0;
+        for (int i = 0; i < collections.size(); i++) {
+            final LibraryCollections.Collection item = collections.get(i);
+            labels[i + 1] = item.name + " (" + item.count() + ")";
+            if (item.id.equals(preferredId)) chosen = i + 1;
+        }
+        rebuildingCollectionFilter = true;
+        collectionsFilter.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, labels));
+        collectionsFilter.setSelection(chosen);
+        activeCollectionId = chosen == 0 ? null : collections.get(chosen - 1).id;
+        rebuildingCollectionFilter = false;
+    }
+
+    private void showCollectionManager() {
+        final String[] options = {tr("Create collection", "إنشاء مجموعة"),
+                tr("Rename collection", "إعادة تسمية مجموعة"),
+                tr("Remove collection label (files kept)",
+                        "إزالة المجموعة فقط (الملفات محفوظة)")};
+        new AlertDialog.Builder(this).setTitle(tr("Manage collections", "إدارة المجموعات"))
+                .setItems(options, (dialog, position) -> {
+                    if (position == 0) promptCollectionName(null);
+                    else chooseCollection(position == 1);
+                })
+                .setNegativeButton(tr("Close", "إغلاق"), null).show();
+    }
+
+    private void chooseCollection(boolean rename) {
+        if (collections.isEmpty()) {
+            Toast.makeText(this, tr("Create a collection first", "أنشئ مجموعة أولًا"),
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String[] labels = new String[collections.size()];
+        for (int i = 0; i < collections.size(); i++) labels[i] = collections.get(i).name;
+        new AlertDialog.Builder(this).setTitle(tr("Choose collection", "اختر مجموعة"))
+                .setItems(labels, (dialog, index) -> {
+                    final LibraryCollections.Collection item = collections.get(index);
+                    if (rename) promptCollectionName(item);
+                    else new AlertDialog.Builder(this)
+                            .setTitle(tr("Remove collection label?", "إزالة المجموعة؟"))
+                            .setMessage(tr("Only its organization label is removed. Saved media stays.",
+                                    "سيُحذف اسم المجموعة فقط وتبقى الملفات محفوظة."))
+                            .setPositiveButton(tr("Remove label", "إزالة المجموعة"),
+                                    (confirm, which) -> {
+                                        try {
+                                            LibraryCollections.remove(this, item.id);
+                                            restoreCollections(activeCollectionId);
+                                            renderLibrary();
+                                        } catch (RuntimeException error) {
+                                            showCollectionError(error);
+                                        }
+                                    })
+                            .setNegativeButton(tr("Keep", "إبقاء"), null).show();
+                }).setNegativeButton(tr("Cancel", "إلغاء"), null).show();
+    }
+
+    private void promptCollectionName(LibraryCollections.Collection existing) {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setFilters(new InputFilter[]{new InputFilter.LengthFilter(
+                LibraryCollections.MAX_NAME_LENGTH)});
+        input.setHint(tr("Collection name", "اسم المجموعة"));
+        if (existing != null) input.setText(existing.name);
+        new AlertDialog.Builder(this).setTitle(existing == null
+                ? tr("New collection", "مجموعة جديدة")
+                : tr("Rename collection", "إعادة تسمية المجموعة"))
+                .setView(input)
+                .setPositiveButton(tr("Save", "حفظ"), (dialog, which) -> {
+                    try {
+                        if (existing == null) {
+                            final LibraryCollections.Collection created =
+                                    LibraryCollections.create(this, input.getText().toString());
+                            restoreCollections(created.id);
+                        } else {
+                            LibraryCollections.rename(this, existing.id,
+                                    input.getText().toString());
+                            restoreCollections(existing.id);
+                        }
+                        renderLibrary();
+                    } catch (RuntimeException error) { showCollectionError(error); }
+                })
+                .setNegativeButton(tr("Cancel", "إلغاء"), null).show();
+    }
+
+    private void chooseCollectionForSelection() {
+        final List<DownloadService.Task> selected = selectedFiles();
+        if (selected.isEmpty()) { showSelectionRequired(); return; }
+        if (collections.isEmpty()) {
+            Toast.makeText(this, tr("Create a collection in Manage first",
+                    "أنشئ مجموعة من إدارة المجموعات أولًا"), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String[] labels = new String[collections.size()];
+        for (int i = 0; i < collections.size(); i++) labels[i] = collections.get(i).name;
+        new AlertDialog.Builder(this).setTitle(tr("Choose collection", "اختر مجموعة"))
+                .setItems(labels, (dialog, index) -> {
+                    final LibraryCollections.Collection chosen = collections.get(index);
+                    new AlertDialog.Builder(this)
+                            .setTitle(chosen.name)
+                            .setItems(new String[]{tr("Add selected", "إضافة المحددة"),
+                                    tr("Remove selected from collection",
+                                            "إزالة المحددة من المجموعة")},
+                                    (action, which) -> {
+                                        try {
+                                            final int count = which == 0
+                                                    ? LibraryCollections.add(this, chosen.id, selected)
+                                                    : LibraryCollections.removeMembers(this,
+                                                            chosen.id, selected);
+                                            restoreCollections(activeCollectionId);
+                                            renderLibrary();
+                                            Toast.makeText(this, tr(count + " memberships updated",
+                                                    "تم تحديث " + count + " عنصرًا بالمجموعة"),
+                                                    Toast.LENGTH_SHORT).show();
+                                        } catch (RuntimeException error) {
+                                            showCollectionError(error);
+                                        }
+                                    })
+                            .setNegativeButton(tr("Cancel", "إلغاء"), null).show();
+                }).setNegativeButton(tr("Cancel", "إلغاء"), null).show();
+    }
+
+    private void showCollectionError(RuntimeException error) {
+        Toast.makeText(this, tr("Collection changes could not be saved: ",
+                "تعذر حفظ تغييرات المجموعة: ") + error.getMessage(),
+                Toast.LENGTH_LONG).show();
     }
 
     private TextView action(final String label, final int color, final View.OnClickListener click) {
@@ -587,13 +894,27 @@ public final class HistoryActivity extends Activity {
         final String[] labels = new String[matching.size()];
         for (int i = 0; i < matching.size(); i++) {
             final DownloadService.Task item = matching.get(i);
+            final LibraryFileStatus.State availability = fileStatuses.get(item.outputUri);
+            final String status = availability == LibraryFileStatus.State.PRESENT
+                    ? tr("available", "متاح")
+                    : availability == LibraryFileStatus.State.MISSING
+                    ? tr("missing", "مفقود")
+                    : availability == LibraryFileStatus.State.NO_ACCESS
+                    ? tr("inaccessible", "غير متاح")
+                    : tr("not checked", "لم يتم التحقق");
             labels[i] = (item.id == task.id ? tr("Current: ", "الحالي: ") : "")
                     + (item.title == null ? tr("Untitled", "بدون عنوان") : item.title)
-                    + " · #" + item.id + " · " + item.formatLabel();
+                    + "\\n#" + item.id + " · " + item.formatLabel()
+                    + " · " + sourceLabel(LibraryOrganizer.sourceOf(item))
+                    + " · " + status;
         }
         new android.app.AlertDialog.Builder(this)
                 .setTitle(tr("Possible copies (metadata only, no deletion)",
                         "نسخ محتملة (حسب البيانات فقط، دون حذف)"))
+                .setMessage(tr("Compare title, source, format and availability. "
+                                + "These are only metadata matches, not verified identical bytes.",
+                        "قارن العنوان والمصدر والصيغة والتوفر. التشابه بالبيانات فقط، "
+                                + "ولا يعني تطابق الملفات بشكل مؤكد."))
                 .setItems(labels, (dialog, index) -> {
                     final DownloadService.Task chosen = matching.get(index);
                     if (fileUnavailable(chosen)) {
@@ -653,12 +974,15 @@ public final class HistoryActivity extends Activity {
             }
 
             final DownloadService.Task task = items.get(position);
+            final boolean chosen = selection.contains(task);
             final boolean compact = parent instanceof GridView
                     && LibraryPresentation.gridColumns(
                             getResources().getConfiguration().screenWidthDp) > 1;
             final LinearLayout card = new LinearLayout(HistoryActivity.this);
             card.setOrientation(LinearLayout.VERTICAL);
-            card.setBackground(Ui.box(HistoryActivity.this, Ui.SURFACE, Ui.LINE, 20));
+            card.setBackground(Ui.box(HistoryActivity.this,
+                    chosen ? Ui.ACCENT_SOFT : Ui.SURFACE,
+                    chosen ? Ui.ACCENT : Ui.LINE, 20));
             card.setPadding(Ui.dp(HistoryActivity.this, compact ? 11 : 16),
                     Ui.dp(HistoryActivity.this, compact ? 11 : 15),
                     Ui.dp(HistoryActivity.this, compact ? 11 : 16),
@@ -668,7 +992,8 @@ public final class HistoryActivity extends Activity {
             heading.setOrientation(LinearLayout.HORIZONTAL);
             heading.setGravity(Gravity.CENTER_VERTICAL);
             final TextView title = Ui.headline(HistoryActivity.this, 15);
-            title.setText((LibraryFavorites.isFavorite(HistoryActivity.this, task)
+            title.setText((chosen ? "☑  " : selectionMode ? "□  " : "")
+                    + (LibraryFavorites.isFavorite(HistoryActivity.this, task)
                     ? "★  " : "") + (task.title == null
                     ? tr("Untitled download", "تنزيل بلا عنوان") : task.title));
             title.setMaxLines(2);
@@ -710,7 +1035,7 @@ public final class HistoryActivity extends Activity {
             detailParams.topMargin = Ui.dp(HistoryActivity.this, 8);
             card.addView(detail, detailParams);
 
-            if (safeSaved && !unavailable) {
+            if (safeSaved && !unavailable && !selectionMode) {
                 final LinearLayout actions = new LinearLayout(HistoryActivity.this);
                 actions.setOrientation(LinearLayout.HORIZONTAL);
                 actions.setPadding(0, Ui.dp(HistoryActivity.this, 12), 0, 0);
