@@ -44,7 +44,6 @@ public final class LibraryViewStateTest {
             assertEquals(3, selectors.get(1).getSelectedItemPosition());
             assertEquals(4, selectors.get(2).getSelectedItemPosition());
             screen.finish();
-            screen.onDestroy();
         } finally {
             LibraryViewState.save(context, "", 0, 0, 0);
         }
