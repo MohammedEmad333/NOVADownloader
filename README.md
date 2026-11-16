@@ -312,6 +312,22 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - Unit tests check stable source grouping, unchanged queue order, candidate
   grouping and exclusion of untrusted or unfinished items.
 
+## NOVA 1.7.7: safer Library open and share actions
+
+- Open and Share now accept only completed entries with expected local MediaStore
+  item references. Remote URLs, unfamiliar providers, malformed IDs, and URIs
+  containing queries or fragments cannot be passed to another app.
+- Library cards with an unavailable or untrusted saved-file reference show a
+  clear warning instead of active Open, Share, Review, or Favorite controls.
+- Sharing grants temporary **read-only** access to the exact saved URI, using
+  both the stream extra and ClipData for receiving Android apps.
+- Missing or malformed MIME metadata falls back to `application/octet-stream`
+  rather than crashing or forwarding an invalid type.
+- Robolectric regression tests cover legitimate saved files, rejected unsafe
+  references, unfinished tasks, read permissions, and MIME fallback.
+- No saved media is copied, deleted, changed, or inspected; downloads and queue
+  persistence are unchanged. No new permissions are required.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

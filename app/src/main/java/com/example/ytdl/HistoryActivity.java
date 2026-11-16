@@ -206,7 +206,7 @@ public final class HistoryActivity extends Activity {
                 Toast.makeText(this, tr("Added back to Transfers", "أضيف إلى التنزيلات مجددًا"),
                         Toast.LENGTH_SHORT).show();
                 finish();
-            } else if (task.state == DownloadService.State.DONE && task.outputUri != null) {
+            } else if (LibraryFileActions.eligible(task)) {
                 if (LocalMediaPlayerActivity.canPlay(task)) playSaved(task);
                 else openSaved(task);
             }
@@ -284,6 +284,7 @@ public final class HistoryActivity extends Activity {
         int saved = 0;
         int failed = 0;
         for (final DownloadService.Task task : all) {
+            if (task == null || task.state == null) continue;
             if (task.state == DownloadService.State.DONE) saved++;
             if (task.state == DownloadService.State.FAILED) failed++;
         }
@@ -333,13 +334,17 @@ public final class HistoryActivity extends Activity {
     }
 
     private void openSaved(final DownloadService.Task task) {
+        final Intent intent = LibraryFileActions.viewIntent(task);
+        if (intent == null) {
+            Toast.makeText(this, tr("Saved file reference is unavailable",
+                    "مرجع الملف المحفوظ غير متاح"), Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
-            final android.net.Uri uri = android.net.Uri.parse(task.outputUri);
-            startActivity(new Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(uri, task.mimeType)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
-        } catch (final Exception e) {
-            Toast.makeText(this, "No app available to open this file", Toast.LENGTH_SHORT).show();
+            startActivity(intent);
+        } catch (final RuntimeException e) {
+            Toast.makeText(this, tr("No app available to open this file",
+                    "لا يوجد تطبيق متاح لفتح الملف"), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -393,15 +398,17 @@ public final class HistoryActivity extends Activity {
     }
 
     private void shareSaved(final DownloadService.Task task) {
+        final Intent intent = LibraryFileActions.shareIntent(task);
+        if (intent == null) {
+            Toast.makeText(this, tr("Saved file reference is unavailable",
+                    "مرجع الملف المحفوظ غير متاح"), Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
-            final android.net.Uri uri = android.net.Uri.parse(task.outputUri);
-            final Intent intent = new Intent(Intent.ACTION_SEND)
-                    .setType(task.mimeType)
-                    .putExtra(Intent.EXTRA_STREAM, uri)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(Intent.createChooser(intent, "Share download"));
-        } catch (final Exception e) {
-            Toast.makeText(this, "Could not share this file", Toast.LENGTH_SHORT).show();
+            startActivity(Intent.createChooser(intent, tr("Share download", "مشاركة الملف")));
+        } catch (final RuntimeException e) {
+            Toast.makeText(this, tr("Could not share this file",
+                    "تعذرت مشاركة الملف"), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -452,18 +459,22 @@ public final class HistoryActivity extends Activity {
             heading.addView(state, badgeParams);
             card.addView(heading);
 
+            final boolean safeSaved = LibraryFileActions.eligible(task);
             final TextView detail = Ui.sans(HistoryActivity.this, 12, Ui.MUTED);
             detail.setText(task.formatLabel()
                     + (possibleDuplicates.contains(task.id)
                     ? tr(" · Possible duplicate, review manually",
                             " · تكرار محتمل، راجع الملف يدويًا") : "")
+                    + (task.state == DownloadService.State.DONE && !safeSaved
+                    ? tr(" · Saved file reference unavailable",
+                            " · مرجع الملف المحفوظ غير متاح") : "")
                     + (task.state == DownloadService.State.FAILED
                     ? tr(" · Tap to retry", " · اضغط لإعادة المحاولة") : ""));
             final LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(-1, -2);
             detailParams.topMargin = Ui.dp(HistoryActivity.this, 8);
             card.addView(detail, detailParams);
 
-            if (task.state == DownloadService.State.DONE && task.outputUri != null) {
+            if (safeSaved) {
                 final LinearLayout actions = new LinearLayout(HistoryActivity.this);
                 actions.setOrientation(LinearLayout.HORIZONTAL);
                 actions.setPadding(0, Ui.dp(HistoryActivity.this, 12), 0, 0);
