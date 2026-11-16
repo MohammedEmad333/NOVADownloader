@@ -80,6 +80,8 @@ public class MainActivity extends Activity {
     private final List<Option> options = new ArrayList<>();
     private final java.util.IdentityHashMap<Option, Integer> twitterClips =
             new java.util.IdentityHashMap<>();
+    private final java.util.IdentityHashMap<Option, String> twitterQuality =
+            new java.util.IdentityHashMap<>();
     private final List<AudioStream> audioTracks = new ArrayList<>();
     private final List<Entry> playlist = new ArrayList<>();
     private final List<Entry> collectionAll = new ArrayList<>();
@@ -917,6 +919,7 @@ public class MainActivity extends Activity {
         currentCover = "";
         options.clear();
         twitterClips.clear();
+        twitterQuality.clear();
         playlist.clear();
         collectionAll.clear();
         collectionName = "";
@@ -1273,6 +1276,7 @@ public class MainActivity extends Activity {
                         variant.url, null, "mp4", "video/mp4", null, false);
                 options.add(option);
                 twitterClips.put(option, i);
+                twitterQuality.put(option, TwitterVideo.qualityToken(variant));
             }
         }
         formatAdapter.notifyDataSetChanged();
@@ -1537,9 +1541,7 @@ public class MainActivity extends Activity {
             spec = DownloadService.Spec.merge(spec.height, track.getAudioTrackId(), spec.label);
         }
         final Integer clip = twitterClips.get(option);
-        final String chosenQuality = clip == null ? null
-                : TwitterVideo.qualityTokenForUrl(option.videoUrl,
-                        option.spec.height);
+        final String chosenQuality = clip == null ? null : twitterQuality.get(option);
         final String taskUrl = clip == null ? pageUrl
                 : TwitterVideo.pageUrlFor(pageUrl, clip, chosenQuality);
         final String taskTitle = clip == null ? videoTitle
