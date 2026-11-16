@@ -372,6 +372,24 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
   precedence, recovery prompts and restored task state. No new permissions,
   accounts, automatic deletion or unsupported network bypass.
 
+## NOVA 1.8.0: navigation and responsive Library
+
+- Explore, Transfers and Library now share a consistent three-destination
+  navigation bar; moving from Library directly to Transfers or Explore is
+  supported without backing through prior screens.
+- Library adds one-tap quick category chips and a collapsible advanced filter
+  section to keep search and actions usable on smaller phones.
+- Library supports a list/grid display toggle and adapts grid columns to
+  available screen width. Selection is saved locally alongside search, sort,
+  category and source controls.
+- The rich list view retains its playback, share, favorite and duplicate
+  review controls. Grid tiles offer the same entry tap action and metadata;
+  use list view for detailed actions.
+- Retains the existing read-only MediaStore checks, download queue and all
+  transfer recovery behavior; no file deletion or new permissions.
+- Adds Robolectric tests for navigation, adaptive column policy, and persisted
+  grid preference. Device testing is still recommended.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

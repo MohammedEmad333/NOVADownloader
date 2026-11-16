@@ -18,6 +18,8 @@ import android.text.TextWatcher;
 import android.text.Editable;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.GridView;
+import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -39,6 +41,13 @@ public final class HistoryActivity extends Activity {
     private Spinner category;
     private Spinner sort;
     private Spinner source;
+    private ListView list;
+    private GridView grid;
+    private LinearLayout advancedFilters;
+    private Button advancedButton;
+    private Button viewButton;
+    private final List<TextView> quickFilters = new ArrayList<>();
+    private boolean gridMode;
     private LibrarySnapshot catalog = LibrarySnapshot.EMPTY;
     private Set<Long> possibleDuplicates = Collections.emptySet();
     private Map<String, LibraryFileStatus.State> fileStatuses = Collections.emptyMap();
@@ -186,6 +195,65 @@ public final class HistoryActivity extends Activity {
             @Override public void afterTextChanged(Editable value) {}
         });
 
+        gridMode = savedView.grid;
+        final LinearLayout quick = new LinearLayout(this);
+        quick.setOrientation(LinearLayout.HORIZONTAL);
+        final android.widget.HorizontalScrollView quickScroll =
+                new android.widget.HorizontalScrollView(this);
+        quickScroll.setHorizontalScrollBarEnabled(false);
+        quickScroll.addView(quick);
+        final int[] quickCategories = {0, 1, 2, 4, 5};
+        final String[] quickLabels = {
+                tr("All", "الكل"), tr("Video", "فيديو"),
+                tr("Audio", "صوت"), tr("Attention", "متابعة"),
+                tr("Favorites", "المفضلة")
+        };
+        for (int i = 0; i < quickCategories.length; i++) {
+            final int selected = quickCategories[i];
+            final TextView chip = Ui.chip(this, quickLabels[i], Ui.TEXT);
+            chip.setMinHeight(Ui.dp(this, 48));
+            chip.setClickable(true);
+            chip.setFocusable(true);
+            chip.setOnClickListener(v -> category.setSelection(selected));
+            quick.addView(chip);
+            quickFilters.add(chip);
+        }
+        final LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(-1, -2);
+        quickParams.bottomMargin = Ui.dp(this, 7);
+        root.addView(quickScroll, quickParams);
+
+        final LinearLayout viewControls = new LinearLayout(this);
+        viewControls.setOrientation(LinearLayout.HORIZONTAL);
+        advancedButton = Ui.button(this, tr("More filters", "فلاتر إضافية"), false);
+        advancedButton.setContentDescription(tr("Show or hide advanced Library filters",
+                "عرض أو إخفاء فلاتر المكتبة الإضافية"));
+        viewControls.addView(advancedButton,
+                new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f));
+        viewButton = Ui.button(this, tr("Grid view", "عرض شبكي"), false);
+        final LinearLayout.LayoutParams viewParams =
+                new LinearLayout.LayoutParams(0, Ui.dp(this, 48), 1f);
+        viewParams.leftMargin = Ui.dp(this, 7);
+        viewControls.addView(viewButton, viewParams);
+        root.addView(viewControls, new LinearLayout.LayoutParams(-1, Ui.dp(this, 48)));
+
+        advancedFilters = new LinearLayout(this);
+        advancedFilters.setOrientation(LinearLayout.VERTICAL);
+        advancedFilters.setPadding(0, Ui.dp(this, 9), 0, 0);
+        root.addView(advancedFilters);
+        advancedFilters.setVisibility(LibraryPresentation.expandAdvancedFilters(
+                savedView.category, savedView.sort, savedView.source)
+                ? View.VISIBLE : View.GONE);
+        advancedButton.setOnClickListener(v -> {
+            advancedFilters.setVisibility(advancedFilters.getVisibility() == View.VISIBLE
+                    ? View.GONE : View.VISIBLE);
+            updateAdvancedButton();
+        });
+        viewButton.setOnClickListener(v -> {
+            gridMode = !gridMode;
+            updateView();
+        });
+        updateAdvancedButton();
+
         final LinearLayout tools = new LinearLayout(this);
         tools.setOrientation(LinearLayout.HORIZONTAL);
         category = selector(new String[]{
@@ -207,7 +275,7 @@ public final class HistoryActivity extends Activity {
         tools.addView(sort, sortParams);
         final LinearLayout.LayoutParams toolParams = new LinearLayout.LayoutParams(-1, -2);
         toolParams.bottomMargin = Ui.dp(this, 12);
-        root.addView(tools, toolParams);
+        advancedFilters.addView(tools, toolParams);
 
         source = selector(new String[]{
                 tr("Every source", "جميع المصادر"), tr("YouTube", "يوتيوب"),
@@ -218,7 +286,7 @@ public final class HistoryActivity extends Activity {
         final LinearLayout.LayoutParams sourceParams =
                 new LinearLayout.LayoutParams(-1, Ui.dp(this, 49));
         sourceParams.bottomMargin = Ui.dp(this, 12);
-        root.addView(source, sourceParams);
+        advancedFilters.addView(source, sourceParams);
 
         category.setSelection(savedView.category);
         sort.setSelection(savedView.sort);
@@ -233,7 +301,7 @@ public final class HistoryActivity extends Activity {
         sort.setOnItemSelectedListener(changed);
         source.setOnItemSelectedListener(changed);
 
-        final ListView list = new ListView(this);
+        list = new ListView(this);
         adapter = new HistoryAdapter();
         list.setAdapter(adapter);
         list.setDivider(null);
@@ -242,7 +310,7 @@ public final class HistoryActivity extends Activity {
         list.setBackgroundColor(Color.TRANSPARENT);
         list.setClipToPadding(false);
         list.setPadding(0, Ui.dp(this, 5), 0, Ui.dp(this, 12));
-        list.setOnItemClickListener((parent, view, position, id) -> {
+        final AdapterView.OnItemClickListener openEntry = (parent, view, position, id) -> {
             if (position >= items.size()) return;
             final DownloadService.Task task = items.get(position);
             if (task.state == DownloadService.State.FAILED
@@ -260,9 +328,61 @@ public final class HistoryActivity extends Activity {
                     openSaved(task);
                 }
             }
-        });
+        };
+        list.setOnItemClickListener(openEntry);
+        grid = new GridView(this);
+        grid.setNumColumns(LibraryPresentation.gridColumns(
+                getResources().getConfiguration().screenWidthDp));
+        grid.setHorizontalSpacing(Ui.dp(this, 9));
+        grid.setVerticalSpacing(Ui.dp(this, 9));
+        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        grid.setAdapter(adapter);
+        grid.setSelector(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        grid.setBackgroundColor(Color.TRANSPARENT);
+        grid.setOnItemClickListener(openEntry);
         root.addView(list, new LinearLayout.LayoutParams(-1, 0, 1f));
+        root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1f));
+        final TextView explore = NovaNavigation.tab(this, tr("✦  Explore", "✦  استكشف"),
+                false, v -> startActivity(NovaNavigation.mainIntent(this, NovaNavigation.EXPLORE)));
+        final TextView transfers = NovaNavigation.tab(this, tr("↓  Transfers", "↓  التنزيلات"),
+                false, v -> startActivity(NovaNavigation.mainIntent(this, NovaNavigation.TRANSFERS)));
+        final TextView library = NovaNavigation.tab(this, tr("▣  Library", "▣  المكتبة"),
+                true, v -> {});
+        library.setClickable(false);
+        library.setContentDescription(tr("Library, current destination",
+                "المكتبة، القسم الحالي"));
+        root.addView(NovaNavigation.bar(this, explore, transfers, library));
+        updateLayoutControls();
         return root;
+    }
+
+    private void updateAdvancedButton() {
+        if (advancedButton == null || advancedFilters == null) return;
+        advancedButton.setText(advancedFilters.getVisibility() == View.VISIBLE
+                ? tr("Fewer filters", "إخفاء الفلاتر")
+                : tr("More filters", "فلاتر إضافية"));
+    }
+
+    private void updateLayoutControls() {
+        if (list != null) list.setVisibility(gridMode ? View.GONE : View.VISIBLE);
+        if (grid != null) grid.setVisibility(gridMode ? View.VISIBLE : View.GONE);
+        if (viewButton != null) {
+            viewButton.setText(gridMode ? tr("List view", "عرض قائمة")
+                    : tr("Grid view", "عرض شبكي"));
+            viewButton.setContentDescription(gridMode
+                    ? tr("Switch to list view", "التبديل إلى عرض القائمة")
+                    : tr("Switch to grid view", "التبديل إلى العرض الشبكي"));
+        }
+        final int[] categoryIds = {0, 1, 2, 4, 5};
+        final int selected = category == null ? 0 : category.getSelectedItemPosition();
+        for (int i = 0; i < quickFilters.size(); i++) {
+            final boolean active = selected == categoryIds[i];
+            final TextView chip = quickFilters.get(i);
+            chip.setBackground(Ui.pressable(this,
+                    active ? Ui.ACCENT : Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 14));
+            chip.setTextColor(active ? Ui.BG : Ui.TEXT);
+            chip.setSelected(active);
+        }
     }
 
     private void openVideoPicker() {
@@ -349,7 +469,8 @@ public final class HistoryActivity extends Activity {
                 search == null ? "" : search.getText().toString(),
                 category == null ? 0 : category.getSelectedItemPosition(),
                 sort == null ? 0 : sort.getSelectedItemPosition(),
-                source == null ? 0 : source.getSelectedItemPosition());
+                source == null ? 0 : source.getSelectedItemPosition(), gridMode);
+        updateLayoutControls();
         renderLibrary();
     }
 
@@ -393,6 +514,7 @@ public final class HistoryActivity extends Activity {
                             + possibleDuplicates.size() + " نسخ محتملة\n" + alertsAr));
         }
         if (adapter != null) adapter.notifyDataSetChanged();
+        updateLayoutControls();
     }
 
     private TextView action(final String label, final int color, final View.OnClickListener click) {
@@ -531,11 +653,16 @@ public final class HistoryActivity extends Activity {
             }
 
             final DownloadService.Task task = items.get(position);
+            final boolean compact = parent instanceof GridView
+                    && LibraryPresentation.gridColumns(
+                            getResources().getConfiguration().screenWidthDp) > 1;
             final LinearLayout card = new LinearLayout(HistoryActivity.this);
             card.setOrientation(LinearLayout.VERTICAL);
             card.setBackground(Ui.box(HistoryActivity.this, Ui.SURFACE, Ui.LINE, 20));
-            card.setPadding(Ui.dp(HistoryActivity.this, 16), Ui.dp(HistoryActivity.this, 15),
-                    Ui.dp(HistoryActivity.this, 16), Ui.dp(HistoryActivity.this, 15));
+            card.setPadding(Ui.dp(HistoryActivity.this, compact ? 11 : 16),
+                    Ui.dp(HistoryActivity.this, compact ? 11 : 15),
+                    Ui.dp(HistoryActivity.this, compact ? 11 : 16),
+                    Ui.dp(HistoryActivity.this, compact ? 11 : 15));
 
             final LinearLayout heading = new LinearLayout(HistoryActivity.this);
             heading.setOrientation(LinearLayout.HORIZONTAL);
@@ -551,10 +678,16 @@ public final class HistoryActivity extends Activity {
             final int color = task.state == DownloadService.State.DONE
                     ? Ui.OK : task.state == DownloadService.State.FAILED ? Ui.ERR : Ui.MUTED;
             final TextView state = Ui.chip(HistoryActivity.this, task.state.label, color);
-            final LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(-2, -2);
-            badgeParams.leftMargin = Ui.dp(HistoryActivity.this, 9);
-            heading.addView(state, badgeParams);
-            card.addView(heading);
+            if (compact) {
+                card.addView(heading);
+                card.addView(state, new LinearLayout.LayoutParams(-1, -2));
+            } else {
+                final LinearLayout.LayoutParams badgeParams =
+                        new LinearLayout.LayoutParams(-2, -2);
+                badgeParams.leftMargin = Ui.dp(HistoryActivity.this, 9);
+                heading.addView(state, badgeParams);
+                card.addView(heading);
+            }
 
             final boolean safeSaved = LibraryFileActions.eligible(task);
             final LibraryFileStatus.State availability = fileStatuses.get(task.outputUri);
@@ -612,7 +745,8 @@ public final class HistoryActivity extends Activity {
             final LinearLayout wrap = new LinearLayout(HistoryActivity.this);
             wrap.setOrientation(LinearLayout.VERTICAL);
             wrap.setPadding(0, 0, 0, Ui.dp(HistoryActivity.this, 11));
-            if (sort != null && sort.getSelectedItemPosition() == 3) {
+            if (!(parent instanceof GridView)
+                    && sort != null && sort.getSelectedItemPosition() == 3) {
                 final int currentSource = LibraryOrganizer.sourceOf(task);
                 final boolean firstInGroup = position == 0
                         || LibraryOrganizer.sourceOf(items.get(position - 1)) != currentSource;
