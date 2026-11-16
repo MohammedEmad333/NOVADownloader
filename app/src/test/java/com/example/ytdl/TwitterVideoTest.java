@@ -176,6 +176,43 @@ public final class TwitterVideoTest {
         assertEquals(URL, TwitterVideo.parse(ID, root).videos.get(0).url);
     }
 
+    @Test public void multipleMp4QualitiesStayInTheSameClip() throws Exception {
+        final JSONObject root = response();
+        final JSONObject clip = root.getJSONObject("tweet").getJSONObject("media")
+                .getJSONArray("videos").getJSONObject(0);
+        final String lower = "https://video.twimg.com/ext_tw_video/1/pu/vid/360x640/low.mp4";
+        clip.getJSONArray("formats").put(new JSONObject()
+                .put("bitrate", 500000).put("url", lower));
+        final TwitterVideo.Post post = TwitterVideo.parse(ID, root);
+        assertEquals(1, post.videos.size());
+        assertEquals(2, TwitterVideo.qualityOptions(post.videos.get(0)).size());
+        assertEquals(URL, post.videos.get(0).url);
+        final String choice = TwitterVideo.pageUrlFor(post.canonicalUrl, 0, "b500000");
+        assertEquals("b500000", TwitterVideo.selectedQuality(choice));
+        assertEquals(lower, TwitterVideo.selectedVideo(post, choice).url);
+        assertEquals(URL, TwitterVideo.selectedVideo(post,
+                TwitterVideo.pageUrlFor(post.canonicalUrl, 0)).url);
+        try {
+            TwitterVideo.selectedVideo(post,
+                    TwitterVideo.pageUrlFor(post.canonicalUrl, 0, "b999999"));
+            fail("A discontinued quality must not silently change to a higher one");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("quality"));
+        }
+    }
+
+    @Test public void invalidQualityTokensCannotBeQueued() throws Exception {
+        assertNull(TwitterVideo.selectedQuality("https://x.com/a/status/" + ID));
+        try {
+            TwitterVideo.pageUrlFor("https://x.com/a/status/" + ID, 0, "https://bad.example");
+            fail("Invalid token allowed");
+        } catch (IllegalArgumentException expected) { }
+        try {
+            TwitterVideo.selectedQuality("https://x.com/i/status/" + ID + "?nova_quality=evil");
+            fail("Invalid token allowed");
+        } catch (IOException expected) { }
+    }
+
     @Test public void selectsHighestBitrateMp4Variant() throws Exception {
         final JSONObject root = response();
         final JSONObject video = root.getJSONObject("tweet").getJSONObject("media")

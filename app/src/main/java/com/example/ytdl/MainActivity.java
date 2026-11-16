@@ -80,6 +80,8 @@ public class MainActivity extends Activity {
     private final List<Option> options = new ArrayList<>();
     private final java.util.IdentityHashMap<Option, Integer> twitterClips =
             new java.util.IdentityHashMap<>();
+    private final java.util.IdentityHashMap<Option, String> twitterQuality =
+            new java.util.IdentityHashMap<>();
     private final List<AudioStream> audioTracks = new ArrayList<>();
     private final List<Entry> playlist = new ArrayList<>();
     private final List<Entry> collectionAll = new ArrayList<>();
@@ -888,7 +890,7 @@ public class MainActivity extends Activity {
             } catch (final Exception e) {
                 main.post(() -> {
                     if (searchLoadGate.isCurrent(generation))
-                        status.setText("Couldn't read that input: " + safeMessage(e));
+                        status.setText(SourceFeedback.message(this, input, e));
                 });
             } finally {
                 main.post(() -> {
@@ -917,6 +919,7 @@ public class MainActivity extends Activity {
         currentCover = "";
         options.clear();
         twitterClips.clear();
+        twitterQuality.clear();
         playlist.clear();
         collectionAll.clear();
         collectionName = "";
@@ -1260,16 +1263,21 @@ public class MainActivity extends Activity {
         if (!post.videos.isEmpty()) loadThumbnail(post.videos.get(0).thumbnail);
         for (int i = 0; i < post.videos.size(); i++) {
             final TwitterVideo.Video video = post.videos.get(i);
-            final String label = tr("Video ", "فيديو ") + (i + 1);
-            final String detail = (video.width > 0 && video.height > 0
-                    ? video.width + " × " + video.height + " · " : "")
-                    + (TwitterVideo.isHlsUrl(video.url) ? "HLS → MP4" : "MP4")
-                    + tr(" · public post", " · منشور عام");
-            final Option option = new Option(label, detail,
-                    DownloadService.Spec.muxed(video.height, label),
-                    video.url, null, "mp4", "video/mp4", null, false);
-            options.add(option);
-            twitterClips.put(option, i);
+            final List<TwitterVideo.Video> variants = TwitterVideo.qualityOptions(video);
+            for (TwitterVideo.Video variant : variants) {
+                final String label = tr("Video ", "فيديو ") + (i + 1)
+                        + (variants.size() > 1 ? " · " + variant.label() : "");
+                final String detail = variant.label()
+                        + (TwitterVideo.isHlsUrl(variant.url)
+                        ? tr(" · HLS conversion", " · تحويل HLS") : "")
+                        + tr(" · public post", " · منشور عام");
+                final Option option = new Option(label, detail,
+                        DownloadService.Spec.muxed(variant.height, label),
+                        variant.url, null, "mp4", "video/mp4", null, false);
+                options.add(option);
+                twitterClips.put(option, i);
+                twitterQuality.put(option, TwitterVideo.qualityToken(variant));
+            }
         }
         formatAdapter.notifyDataSetChanged();
     }
@@ -1533,8 +1541,9 @@ public class MainActivity extends Activity {
             spec = DownloadService.Spec.merge(spec.height, track.getAudioTrackId(), spec.label);
         }
         final Integer clip = twitterClips.get(option);
-        final String taskUrl = clip == null
-                ? pageUrl : TwitterVideo.pageUrlFor(pageUrl, clip);
+        final String chosenQuality = clip == null ? null : twitterQuality.get(option);
+        final String taskUrl = clip == null ? pageUrl
+                : TwitterVideo.pageUrlFor(pageUrl, clip, chosenQuality);
         final String taskTitle = clip == null ? videoTitle
                 : Streams.sanitize(videoTitle + " - Video " + (clip + 1));
         final DownloadService.Task task = new DownloadService.Task(taskUrl, taskTitle, spec);

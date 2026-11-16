@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import okhttp3.Request;
 import okhttp3.Response;
@@ -37,18 +39,28 @@ final class TwitterVideo {
         final int height;
         final int bitrate;
         final String thumbnail;
+        /** Alternate, individually selectable MP4 renditions of this same clip. */
+        final List<Video> qualities;
 
         Video(String url, int width, int height, int bitrate, String thumbnail) {
+            this(url, width, height, bitrate, thumbnail, Collections.emptyList());
+        }
+
+        Video(String url, int width, int height, int bitrate, String thumbnail,
+              List<Video> qualities) {
             this.url = url;
             this.width = width;
             this.height = height;
             this.bitrate = bitrate;
             this.thumbnail = thumbnail;
+            this.qualities = Collections.unmodifiableList(new ArrayList<>(qualities));
         }
 
         String label() {
             return (isHlsUrl(url) ? "HLS" : "MP4")
-                    + (height > 0 ? " · " + height + "p" : "");
+                    + (width > 0 && height > 0 ? " · " + width + "×" + height : "")
+                    + (bitrate > 0 ? " · " + String.format(Locale.US,
+                            "%.1f Mbps", bitrate / 1_000_000.0) : "");
         }
     }
 
@@ -73,10 +85,18 @@ final class TwitterVideo {
     }
 
     static String pageUrlFor(String url, int index) {
+        return pageUrlFor(url, index, null);
+    }
+
+    /** The quality token is a stable public bitrate or rendition size, never a stream URL. */
+    static String pageUrlFor(String url, int index, String qualityToken) {
         final String id = statusId(url);
-        if (id == null || index < 0 || index >= 16)
-            throw new IllegalArgumentException("Invalid public post or video index");
-        return "https://x.com/i/status/" + id + "?nova_video=" + index;
+        if (id == null || index < 0 || index >= 16
+                || (qualityToken != null && !validQualityToken(qualityToken))) {
+            throw new IllegalArgumentException("Invalid public post, clip, or quality");
+        }
+        return "https://x.com/i/status/" + id + "?nova_video=" + index
+                + (qualityToken == null ? "" : "&nova_quality=" + qualityToken);
     }
 
     static int selectedIndex(String url) throws IOException {
@@ -88,6 +108,67 @@ final class TwitterVideo {
         final int number = Integer.parseInt(index);
         if (number >= 16) throw new IOException("X post video index out of range");
         return number;
+    }
+
+    private static boolean validQualityToken(String token) {
+        return token != null && (token.matches("b[1-9][0-9]{0,8}")
+                || token.matches("r[1-9][0-9]{1,3}x[1-9][0-9]{1,3}"));
+    }
+
+    /** Old queued links with no explicit quality continue to select the best MP4. */
+    static String selectedQuality(String url) throws IOException {
+        if (statusId(url) == null) throw new IOException("Invalid X/Twitter post URL");
+        final String value = Uri.parse(url).getQueryParameter("nova_quality");
+        if (value == null) return null;
+        if (!validQualityToken(value)) throw new IOException("Invalid X quality selection");
+        return value;
+    }
+
+    /** Quality belongs to a clip; never change the selected clip to find a match. */
+    static Video selectedVideo(Post post, String url) throws IOException {
+        if (post == null || !post.canonicalUrl.equals(
+                "https://x.com/i/status/" + statusId(url))) {
+            throw new IOException("Public X post mismatch");
+        }
+        final int index = selectedIndex(url);
+        if (index >= post.videos.size()) {
+            throw new IOException("Selected X video is no longer available");
+        }
+        final Video video = post.videos.get(index);
+        final String quality = selectedQuality(url);
+        if (quality == null) return video;
+        for (Video candidate : qualityOptions(video)) {
+            if (quality.equals(qualityToken(candidate))) return candidate;
+        }
+        throw new IOException("Selected X quality is no longer available");
+    }
+
+    static List<Video> qualityOptions(Video video) {
+        if (video == null) return Collections.emptyList();
+        return video.qualities.isEmpty()
+                ? Collections.singletonList(video) : video.qualities;
+    }
+
+    /** No signed URLs, query strings or access tokens are persisted in the choice. */
+    static String qualityTokenForUrl(String videoUrl, int height) {
+        if (!isSafeMp4Url(videoUrl)) return null;
+        final String path = Uri.parse(videoUrl).getPath();
+        if (path == null) return null;
+        final java.util.regex.Matcher size = java.util.regex.Pattern
+                .compile("/([1-9][0-9]{1,3})x([1-9][0-9]{1,3})/")
+                .matcher(path);
+        return size.find() ? "r" + size.group(1) + "x" + size.group(2) : null;
+    }
+
+    static String qualityToken(Video video) {
+        if (video == null || !isSafeMp4Url(video.url)) return null;
+        if (video.bitrate > 0 && video.bitrate <= 999_999_999) return "b" + video.bitrate;
+        final String path = Uri.parse(video.url).getPath();
+        if (path == null) return null;
+        final java.util.regex.Matcher size = java.util.regex.Pattern
+                .compile("/([1-9][0-9]{1,3})x([1-9][0-9]{1,3})/")
+                .matcher(path);
+        return size.find() ? "r" + size.group(1) + "x" + size.group(2) : null;
     }
 
     static String statusId(String value) {
@@ -275,14 +356,20 @@ final class TwitterVideo {
             final int height = Math.max(0, video.optInt("height"));
             Video mp4 = null;
             Video hls = null;
+            final Map<String, Video> renditions = new LinkedHashMap<>();
             if (variants != null) {
                 for (int j = 0; j < variants.length(); j++) {
                     final JSONObject variant = variants.optJSONObject(j);
                     if (variant == null) continue;
                     final String url = variant.optString("url");
                     final int bitrate = Math.max(0, variant.optInt("bitrate"));
-                    if (isSafeMp4Url(url) && (mp4 == null || bitrate > mp4.bitrate)) {
-                        mp4 = new Video(url, width, height, bitrate, thumb);
+                    if (isSafeMp4Url(url)) {
+                        final Video candidate = new Video(url, width, height, bitrate, thumb);
+                        if (mp4 == null || bitrate > mp4.bitrate) mp4 = candidate;
+                        final String key = qualityToken(candidate);
+                        if (key != null && !renditions.containsKey(key)) {
+                            renditions.put(key, candidate);
+                        }
                     } else if (isHlsUrl(url) && (hls == null || bitrate > hls.bitrate)) {
                         hls = new Video(url, width, height, bitrate, thumb);
                     }
@@ -294,9 +381,25 @@ final class TwitterVideo {
             } else if (hls == null && isHlsUrl(direct)) {
                 hls = new Video(direct, width, height, 0, thumb);
             }
-            // Prefer the resumable direct MP4. Only use HLS when MP4 is unavailable.
-            if (mp4 != null) found.add(mp4);
-            else if (hls != null) found.add(hls);
+            // Prefer resumable MP4. Expose multiple safe MP4 renditions within
+            // a single clip; do not convert qualities into extra clip indexes.
+            if (mp4 != null) {
+                final List<Video> qualityOptions = new ArrayList<>(renditions.values());
+                qualityOptions.sort((a, b) -> {
+                    final int bandwidth = Integer.compare(b.bitrate, a.bitrate);
+                    if (bandwidth != 0) return bandwidth;
+                    return Long.compare((long) b.width * b.height,
+                            (long) a.width * a.height);
+                });
+                if (qualityOptions.size() > 8) {
+                    qualityOptions.subList(8, qualityOptions.size()).clear();
+                }
+                found.add(qualityOptions.size() > 1
+                        ? new Video(mp4.url, mp4.width, mp4.height,
+                                mp4.bitrate, mp4.thumbnail, qualityOptions) : mp4);
+            } else if (hls != null) {
+                found.add(hls);
+            }
         }
         if (found.isEmpty()) {
             throw new IOException("No public MP4 or supported HLS video in this post");
