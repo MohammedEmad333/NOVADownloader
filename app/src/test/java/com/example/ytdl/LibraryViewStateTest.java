@@ -60,6 +60,21 @@ public final class LibraryViewStateTest {
         }
     }
 
+    @Test public void gridChoicePersistsIndependentlyFromFilters() {
+        try {
+            LibraryViewState.save(context, "song", 2, 3, 1, true);
+            LibraryViewState.State restored = LibraryViewState.load(context);
+            assertTrue(restored.grid);
+            assertEquals(2, restored.category);
+            assertEquals(3, restored.sort);
+            assertEquals(1, restored.source);
+            LibraryViewState.save(context, "song", 2, 3, 1, false);
+            assertFalse(LibraryViewState.load(context).grid);
+        } finally {
+            LibraryViewState.save(context, "", 0, 0, 0);
+        }
+    }
+
     @Test public void invalidSelectionsResetAndLongSearchIsBounded() {
         try {
             LibraryViewState.save(context, "x".repeat(300), -7, 99, 500);

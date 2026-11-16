@@ -84,6 +84,31 @@ public final class NovaScreenSmokeTest {
         assertEquals(-1, MainActivity.optionIndexForListPosition(0, 1, 0));
     }
 
+    @Test public void navigationDestinationsAreReusedSafely() {
+        final MainActivity activity = Robolectric.buildActivity(MainActivity.class)
+                .create().start().resume().get();
+        final android.content.Intent toTransfers = NovaNavigation.mainIntent(
+                activity, NovaNavigation.TRANSFERS);
+        assertEquals(NovaNavigation.TRANSFERS,
+                NovaNavigation.requestedDestination(toTransfers));
+        assertTrue((toTransfers.getFlags() & android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP) != 0);
+        assertEquals(-1, NovaNavigation.requestedDestination(null));
+        assertEquals(-1, NovaNavigation.requestedDestination(new android.content.Intent()));
+        final android.content.Intent invalid = new android.content.Intent()
+                .putExtra(NovaNavigation.EXTRA_DESTINATION, 404);
+        assertEquals(-1, NovaNavigation.requestedDestination(invalid));
+    }
+
+    @Test public void libraryShowsSharedNavigationAndGridToggle() {
+        final HistoryActivity activity = Robolectric.buildActivity(HistoryActivity.class)
+                .create().start().resume().get();
+        final View root = activity.findViewById(android.R.id.content);
+        assertTrue(hasText(root, "✦  Explore"));
+        assertTrue(hasText(root, "↓  Transfers"));
+        assertTrue(hasText(root, "▣  Library"));
+        assertTrue(hasText(root, "Grid view"));
+    }
+
     @Test public void libraryShowsBrandAndEmptyState() {
         final HistoryActivity activity = Robolectric.buildActivity(HistoryActivity.class)
                 .create().start().resume().get();

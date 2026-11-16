@@ -129,7 +129,8 @@ public class MainActivity extends Activity {
         appliedLanguage = NovaPreferences.language(this);
         setContentView(buildUi());
         trimThumbnailCache();
-        selectTab(true);
+        final int requested = NovaNavigation.requestedDestination(getIntent());
+        selectTab(requested != NovaNavigation.TRANSFERS);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -141,6 +142,8 @@ public class MainActivity extends Activity {
     @Override protected void onNewIntent(final Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        final int requested = NovaNavigation.requestedDestination(intent);
+        if (requested >= 0) selectTab(requested == NovaNavigation.EXPLORE);
         handleShare(intent);
     }
 
@@ -265,59 +268,21 @@ public class MainActivity extends Activity {
     }
 
     private View buildTabs() {
-        final LinearLayout wrap = new LinearLayout(this);
-        wrap.setOrientation(LinearLayout.HORIZONTAL);
-        wrap.setGravity(Gravity.CENTER_VERTICAL);
-        wrap.setPadding(Ui.dp(this, 15), Ui.dp(this, 11),
-                Ui.dp(this, 15), Ui.dp(this, 12));
-        wrap.setBackground(Ui.box(this, Ui.SURFACE, Ui.LINE, 0));
-        fetchTabLabel = tabLabel(tr("✦  Explore", "✦  استكشف"), true);
-        queueTabLabel = tabLabel(tr("↓  Transfers", "↓  التنزيلات"), false);
-        libraryTabLabel = tabLabel(tr("▣  Library", "▣  المكتبة"), false);
-        final LinearLayout.LayoutParams first = new LinearLayout.LayoutParams(
-                0, Ui.dp(this, 52), 1f);
-        final LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(
-                0, Ui.dp(this, 52), 1f);
-        final LinearLayout.LayoutParams third = new LinearLayout.LayoutParams(
-                0, Ui.dp(this, 52), 1f);
-        second.leftMargin = Ui.dp(this, 7);
-        third.leftMargin = Ui.dp(this, 7);
-        wrap.addView(fetchTabLabel, first);
-        wrap.addView(queueTabLabel, second);
-        wrap.addView(libraryTabLabel, third);
-        libraryTabLabel.setOnClickListener(v -> openLibrary());
-        return wrap;
-    }
-
-    private TextView tabLabel(final String label, final boolean fetch) {
-        final TextView tab = Ui.mono(this, 13, Ui.MUTED);
-        tab.setText(label);
-        tab.setGravity(Gravity.CENTER);
-        tab.setMinHeight(Ui.dp(this, 48));
-        tab.setClickable(true);
-        tab.setFocusable(true);
-        tab.setContentDescription(label.trim());
-        tab.setOnClickListener(v -> selectTab(fetch));
-        return tab;
+        fetchTabLabel = NovaNavigation.tab(this, tr("✦  Explore", "✦  استكشف"),
+                true, v -> selectTab(true));
+        queueTabLabel = NovaNavigation.tab(this, tr("↓  Transfers", "↓  التنزيلات"),
+                false, v -> selectTab(false));
+        libraryTabLabel = NovaNavigation.tab(this, tr("▣  Library", "▣  المكتبة"),
+                false, v -> openLibrary());
+        return NovaNavigation.bar(this, fetchTabLabel, queueTabLabel, libraryTabLabel);
     }
 
     private void selectTab(final boolean fetch) {
         fetchPane.setVisibility(fetch ? View.VISIBLE : View.GONE);
         queuePane.setVisibility(fetch ? View.GONE : View.VISIBLE);
-        fetchTabLabel.setTextColor(fetch ? Ui.BG : Ui.MUTED);
-        queueTabLabel.setTextColor(fetch ? Ui.MUTED : Ui.BG);
-        fetchTabLabel.setBackground(Ui.pressable(this,
-                fetch ? Ui.ACCENT : Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 17));
-        queueTabLabel.setBackground(Ui.pressable(this,
-                fetch ? Ui.SURFACE_RAISED : Ui.ACCENT, Ui.ACCENT_SOFT, 17));
-        if (libraryTabLabel != null) {
-            libraryTabLabel.setTextColor(Ui.MUTED);
-            libraryTabLabel.setBackground(Ui.pressable(this,
-                    Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 17));
-            libraryTabLabel.setSelected(false);
-        }
-        fetchTabLabel.setSelected(fetch);
-        queueTabLabel.setSelected(!fetch);
+        NovaNavigation.style(this, fetchTabLabel, fetch);
+        NovaNavigation.style(this, queueTabLabel, !fetch);
+        NovaNavigation.style(this, libraryTabLabel, false);
     }
 
     private final class SwipePager extends FrameLayout {
