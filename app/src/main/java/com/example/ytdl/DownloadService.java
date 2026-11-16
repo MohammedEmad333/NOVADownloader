@@ -1058,6 +1058,7 @@ public class DownloadService extends Service {
 
         if (TwitterVideo.isPostUrl(task.pageUrl)) {
             final TwitterVideo.Post post = TwitterVideo.fetch(task.pageUrl);
+            final int index = TwitterVideo.selectedIndex(task.pageUrl);
             final TwitterVideo.Video video =
                     TwitterVideo.selectedVideo(post, task.pageUrl);
             task.preResolve(video.url, null, "mp4", "video/mp4");
