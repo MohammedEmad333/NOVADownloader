@@ -3,6 +3,9 @@ package com.example.ytdl;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.Locale;
 import java.util.function.Predicate;
 
@@ -18,6 +21,7 @@ final class LibraryFilter {
     static final int NEWEST = 0;
     static final int OLDEST = 1;
     static final int TITLE = 2;
+    static final int GROUP_BY_SOURCE = 3;
 
     private LibraryFilter() {}
 
@@ -29,11 +33,32 @@ final class LibraryFilter {
     static List<DownloadService.Task> select(List<DownloadService.Task> all,
                                               String search, int category, int order,
                                               Predicate<DownloadService.Task> favorites) {
+        return select(all, search, category, order, favorites,
+                LibraryOrganizer.ALL_SOURCES, null);
+    }
+
+    /**
+     * Filter by source and optional candidate IDs before sorting, doing one
+     * stable sort and leaving the original queue untouched.
+     */
+    static List<DownloadService.Task> select(List<DownloadService.Task> all,
+                                              String search, int category, int order,
+                                              Predicate<DownloadService.Task> favorites,
+                                              int source, Set<Long> candidates) {
         final String query = search == null ? "" : search.trim().toLowerCase(Locale.ROOT);
         final List<DownloadService.Task> result = new ArrayList<>();
+        if (all == null) return result;
+        final Map<Long, Integer> sources = order == GROUP_BY_SOURCE
+                ? new HashMap<>() : null;
         for (DownloadService.Task task : all) {
             if (task == null || task.state == null || !task.state.finished()) continue;
             if (!matchesCategory(task, category, favorites)) continue;
+            if (candidates != null && !candidates.contains(task.id)) continue;
+            if (source != LibraryOrganizer.ALL_SOURCES || sources != null) {
+                final int taskSource = LibraryOrganizer.sourceOf(task);
+                if (source != LibraryOrganizer.ALL_SOURCES && taskSource != source) continue;
+                if (sources != null) sources.put(task.id, taskSource);
+            }
             final String title = task.title == null ? "" : task.title;
             final String artist = task.artist == null ? "" : task.artist;
             final String label = task.spec == null ? "" : task.spec.label;
@@ -50,6 +75,11 @@ final class LibraryFilter {
                 final String at = a.title == null ? "" : a.title;
                 final String bt = b.title == null ? "" : b.title;
                 return at.compareToIgnoreCase(bt);
+            });
+        } else if (order == GROUP_BY_SOURCE) {
+            result.sort((a, b) -> {
+                final int group = Integer.compare(sources.get(a.id), sources.get(b.id));
+                return group != 0 ? group : Long.compare(b.id, a.id);
             });
         } else {
             result.sort((a, b) -> Long.compare(b.id, a.id));

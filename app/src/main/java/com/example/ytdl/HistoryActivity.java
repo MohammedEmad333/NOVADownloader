@@ -3,6 +3,7 @@ package com.example.ytdl;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -23,6 +24,7 @@ import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** NOVA library for completed and interrupted media downloads. */
@@ -37,7 +39,12 @@ public final class HistoryActivity extends Activity {
     private Spinner category;
     private Spinner sort;
     private Spinner source;
+    private LibrarySnapshot catalog = LibrarySnapshot.EMPTY;
     private Set<Long> possibleDuplicates = Collections.emptySet();
+    private Map<String, LibraryFileStatus.State> fileStatuses = Collections.emptyMap();
+    private Thread fileScan;
+    private int fileScanGeneration;
+    private boolean restoringView;
 
     private String tr(String english, String arabic) {
         return NovaPreferences.text(this, english, arabic);
@@ -49,7 +56,6 @@ public final class HistoryActivity extends Activity {
         Ui.applyChrome(this);
         DownloadService.ensureLoaded(this);
         setContentView(buildUi());
-        refresh();
         if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_START_IMPORT, false)) {
             getIntent().removeExtra(EXTRA_START_IMPORT);
             openVideoPicker();
@@ -60,6 +66,38 @@ public final class HistoryActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refresh();
+    }
+
+    @Override
+    protected void onPause() {
+        stopFileScan();
+        super.onPause();
+    }
+
+    private void stopFileScan() {
+        fileScanGeneration++;
+        if (fileScan != null) fileScan.interrupt();
+        fileScan = null;
+    }
+
+    private void verifyFilesInBackground() {
+        stopFileScan();
+        fileStatuses = Collections.emptyMap();
+        final int generation = fileScanGeneration;
+        final List<DownloadService.Task> snapshot = catalog.tasks;
+        fileScan = new Thread(() -> {
+            final Map<String, LibraryFileStatus.State> result = LibraryFileStatus.scan(
+                    snapshot, uri -> LibraryFileStatus.check(getContentResolver(), uri));
+            if (Thread.currentThread().isInterrupted()) return;
+            runOnUiThread(() -> {
+                if (generation != fileScanGeneration || isFinishing() || isDestroyed()) return;
+                fileStatuses = result;
+                fileScan = null;
+                renderLibrary();
+            });
+        }, "nova-library-file-check");
+        fileScan.setDaemon(true);
+        fileScan.start();
     }
 
     private View buildUi() {
@@ -124,6 +162,8 @@ public final class HistoryActivity extends Activity {
         importParams.bottomMargin = Ui.dp(this, 12);
         root.addView(importVideo, importParams);
 
+        final LibraryViewState.State savedView = LibraryViewState.load(this);
+        restoringView = true;
         search = new EditText(this);
         search.setSingleLine(true);
         search.setTextColor(Ui.TEXT);
@@ -137,10 +177,11 @@ public final class HistoryActivity extends Activity {
                 -1, Ui.dp(this, 52));
         searchParams.bottomMargin = Ui.dp(this, 10);
         root.addView(search, searchParams);
+        search.setText(savedView.search);
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence value, int start, int before, int count) {
-                refresh();
+                updateView();
             }
             @Override public void afterTextChanged(Editable value) {}
         });
@@ -179,9 +220,13 @@ public final class HistoryActivity extends Activity {
         sourceParams.bottomMargin = Ui.dp(this, 12);
         root.addView(source, sourceParams);
 
+        category.setSelection(savedView.category);
+        sort.setSelection(savedView.sort);
+        source.setSelection(savedView.source);
+        restoringView = false;
         final AdapterView.OnItemSelectedListener changed = new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view,
-                                                  int position, long id) { refresh(); }
+                                                  int position, long id) { updateView(); }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         };
         category.setOnItemSelectedListener(changed);
@@ -207,8 +252,13 @@ public final class HistoryActivity extends Activity {
                         Toast.LENGTH_SHORT).show();
                 finish();
             } else if (LibraryFileActions.eligible(task)) {
-                if (LocalMediaPlayerActivity.canPlay(task)) playSaved(task);
-                else openSaved(task);
+                if (fileUnavailable(task)) {
+                    showUnavailableFile(task);
+                } else if (LocalMediaPlayerActivity.canPlay(task)) {
+                    playSaved(task);
+                } else {
+                    openSaved(task);
+                }
             }
         });
         root.addView(list, new LinearLayout.LayoutParams(-1, 0, 1f));
@@ -233,7 +283,7 @@ public final class HistoryActivity extends Activity {
         if (requestCode != PICK_VIDEO || resultCode != RESULT_OK
                 || data == null || data.getData() == null || importing) return;
         importing = true;
-        final android.net.Uri chosen = data.getData();
+        final Uri chosen = data.getData();
         Toast.makeText(this, tr("Importing selected video…", "جاري استيراد الفيديو…"),
                 Toast.LENGTH_SHORT).show();
         new Thread(() -> {
@@ -279,42 +329,68 @@ public final class HistoryActivity extends Activity {
         return control;
     }
 
+    private boolean fileUnavailable(DownloadService.Task task) {
+        return task != null && LibraryFileStatus.unavailable(fileStatuses.get(task.outputUri));
+    }
+
+    private void showUnavailableFile(DownloadService.Task task) {
+        final LibraryFileStatus.State state = fileStatuses.get(task.outputUri);
+        Toast.makeText(this, state == LibraryFileStatus.State.NO_ACCESS
+                        ? tr("NOVA cannot access this saved file. Check its permissions.",
+                                "لا يستطيع نوفا الوصول إلى هذا الملف. تحقق من أذونات الوصول.")
+                        : tr("This saved file is missing. The Library record is kept.",
+                                "هذا الملف المحفوظ مفقود. تم الاحتفاظ بسجله في المكتبة."),
+                Toast.LENGTH_LONG).show();
+    }
+
+    private void updateView() {
+        if (restoringView) return;
+        LibraryViewState.save(this,
+                search == null ? "" : search.getText().toString(),
+                category == null ? 0 : category.getSelectedItemPosition(),
+                sort == null ? 0 : sort.getSelectedItemPosition(),
+                source == null ? 0 : source.getSelectedItemPosition());
+        renderLibrary();
+    }
+
     private void refresh() {
-        final List<DownloadService.Task> all = DownloadService.snapshot();
-        int saved = 0;
-        int failed = 0;
-        for (final DownloadService.Task task : all) {
-            if (task == null || task.state == null) continue;
-            if (task.state == DownloadService.State.DONE) saved++;
-            if (task.state == DownloadService.State.FAILED) failed++;
-        }
-        possibleDuplicates = LibraryOrganizer.possibleDuplicateIds(all);
+        // Only queue updates and lifecycle resumes rebuild the snapshot or scan
+        // MediaStore. Typing and changing selectors reuse cached metadata.
+        catalog = LibrarySnapshot.capture(DownloadService.snapshot());
+        possibleDuplicates = catalog.possibleDuplicates;
+        renderLibrary();
+        verifyFilesInBackground();
+    }
+
+    private void renderLibrary() {
         final int selectedCategory = category == null ? 0 : category.getSelectedItemPosition();
         final int selectedSource = source == null ? 0 : source.getSelectedItemPosition();
-        final List<DownloadService.Task> visible = LibraryFilter.select(all,
-                search == null ? "" : search.getText().toString(),
+        final int selectedSort = sort == null ? 0 : sort.getSelectedItemPosition();
+        final String query = search == null ? "" : search.getText().toString();
+        final List<DownloadService.Task> filtered = LibraryFilter.select(
+                catalog.tasks, query,
                 selectedCategory == 6 ? LibraryFilter.ALL : selectedCategory,
-                sort == null ? 0 : sort.getSelectedItemPosition(),
-                task -> LibraryFavorites.isFavorite(this, task));
+                selectedSort, task -> LibraryFavorites.isFavorite(this, task),
+                selectedSource, selectedCategory == 6 ? possibleDuplicates : null);
         items.clear();
-        for (final DownloadService.Task task : visible) {
-            if (selectedSource != LibraryOrganizer.ALL_SOURCES
-                    && LibraryOrganizer.sourceOf(task) != selectedSource) continue;
-            if (selectedCategory == 6 && !possibleDuplicates.contains(task.id)) continue;
-            items.add(task);
-        }
-        if (sort != null && sort.getSelectedItemPosition() == 3) {
-            final List<DownloadService.Task> grouped = LibraryOrganizer.groupedBySource(items);
-            items.clear();
-            items.addAll(grouped);
-        }
+        items.addAll(filtered);
         if (summary != null) {
-            summary.setText(tr("✦  " + saved + " saved    ·    " + failed
-                            + " need attention\n" + items.size() + " visible items · "
-                            + possibleDuplicates.size() + " possible duplicate entries",
-                    "✦  " + saved + " محفوظ    ·    " + failed
-                            + " تحتاج متابعة\n" + items.size() + " عناصر ظاهرة · "
-                            + possibleDuplicates.size() + " عناصر محتملة التكرار"));
+            int missing = 0;
+            int denied = 0;
+            for (DownloadService.Task task : catalog.tasks) {
+                if (task.state != DownloadService.State.DONE) continue;
+                final LibraryFileStatus.State status = fileStatuses.get(task.outputUri);
+                if (status == LibraryFileStatus.State.MISSING) missing++;
+                else if (status == LibraryFileStatus.State.NO_ACCESS) denied++;
+            }
+            final String alertsEn = missing + " missing · " + denied + " inaccessible";
+            final String alertsAr = missing + " مفقودة · " + denied + " غير متاحة";
+            summary.setText(tr("✦  " + catalog.saved + " saved    ·    " + catalog.failed
+                            + " need attention\n" + items.size() + " visible · "
+                            + possibleDuplicates.size() + " possible copies\n" + alertsEn,
+                    "✦  " + catalog.saved + " محفوظ    ·    " + catalog.failed
+                            + " تحتاج متابعة\n" + items.size() + " ظاهرة · "
+                            + possibleDuplicates.size() + " نسخ محتملة\n" + alertsAr));
         }
         if (adapter != null) adapter.notifyDataSetChanged();
     }
@@ -334,6 +410,10 @@ public final class HistoryActivity extends Activity {
     }
 
     private void openSaved(final DownloadService.Task task) {
+        if (fileUnavailable(task)) {
+            showUnavailableFile(task);
+            return;
+        }
         final Intent intent = LibraryFileActions.viewIntent(task);
         if (intent == null) {
             Toast.makeText(this, tr("Saved file reference is unavailable",
@@ -349,13 +429,17 @@ public final class HistoryActivity extends Activity {
     }
 
     private void playSaved(final DownloadService.Task task) {
+        if (fileUnavailable(task)) {
+            showUnavailableFile(task);
+            return;
+        }
         if (!LocalMediaPlayerActivity.canPlay(task)) return;
         startActivity(LocalMediaPlayerActivity.intentFor(this, task));
     }
 
     private void toggleFavorite(final DownloadService.Task task) {
         LibraryFavorites.toggle(this, task);
-        refresh();
+        renderLibrary();
     }
 
     private String sourceLabel(final int sourceId) {
@@ -371,7 +455,7 @@ public final class HistoryActivity extends Activity {
 
     private void reviewPossibleDuplicates(final DownloadService.Task task) {
         final List<DownloadService.Task> matching =
-                LibraryOrganizer.matchingCopies(DownloadService.snapshot(), task);
+                LibraryOrganizer.matchingCopies(catalog.tasks, task);
         if (matching.size() < 2) {
             Toast.makeText(this, tr("No longer a duplicate candidate",
                     "لم يعد هذا الملف ضمن التكرارات المحتملة"), Toast.LENGTH_SHORT).show();
@@ -390,6 +474,10 @@ public final class HistoryActivity extends Activity {
                         "نسخ محتملة (حسب البيانات فقط، دون حذف)"))
                 .setItems(labels, (dialog, index) -> {
                     final DownloadService.Task chosen = matching.get(index);
+                    if (fileUnavailable(chosen)) {
+                        showUnavailableFile(chosen);
+                        return;
+                    }
                     if (LocalMediaPlayerActivity.canPlay(chosen)) playSaved(chosen);
                     else if (chosen.outputUri != null) openSaved(chosen);
                 })
@@ -398,6 +486,10 @@ public final class HistoryActivity extends Activity {
     }
 
     private void shareSaved(final DownloadService.Task task) {
+        if (fileUnavailable(task)) {
+            showUnavailableFile(task);
+            return;
+        }
         final Intent intent = LibraryFileActions.shareIntent(task);
         if (intent == null) {
             Toast.makeText(this, tr("Saved file reference is unavailable",
@@ -422,10 +514,15 @@ public final class HistoryActivity extends Activity {
         @Override
         public View getView(final int position, final View convertView, final ViewGroup parent) {
             if (items.isEmpty()) {
+                final LibraryEmptyState emptyState = LibraryEmptyState.forFilters(
+                        catalog.finished,
+                        search == null ? "" : search.getText().toString(),
+                        category == null ? 0 : category.getSelectedItemPosition(),
+                        source == null ? 0 : source.getSelectedItemPosition());
                 final LinearLayout empty = Ui.section(HistoryActivity.this,
                         tr("YOUR SPACE", "مساحتك"),
-                        tr("Nothing matches yet", "لا توجد نتائج"),
-                        tr("Try another search or category.", "جرّب البحث بكلمات أخرى أو غيّر التصنيف."));
+                        tr(emptyState.englishTitle, emptyState.arabicTitle),
+                        tr(emptyState.englishHint, emptyState.arabicHint));
                 empty.setPadding(Ui.dp(HistoryActivity.this, 18),
                         Ui.dp(HistoryActivity.this, 26), Ui.dp(HistoryActivity.this, 18),
                         Ui.dp(HistoryActivity.this, 26));
@@ -460,21 +557,27 @@ public final class HistoryActivity extends Activity {
             card.addView(heading);
 
             final boolean safeSaved = LibraryFileActions.eligible(task);
+            final LibraryFileStatus.State availability = fileStatuses.get(task.outputUri);
+            final boolean unavailable = LibraryFileStatus.unavailable(availability);
             final TextView detail = Ui.sans(HistoryActivity.this, 12, Ui.MUTED);
             detail.setText(task.formatLabel()
                     + (possibleDuplicates.contains(task.id)
                     ? tr(" · Possible duplicate, review manually",
                             " · تكرار محتمل، راجع الملف يدويًا") : "")
                     + (task.state == DownloadService.State.DONE && !safeSaved
-                    ? tr(" · Saved file reference unavailable",
-                            " · مرجع الملف المحفوظ غير متاح") : "")
+                    ? tr(" · Invalid saved-file reference", " · مرجع الملف غير صالح") : "")
+                    + (availability == LibraryFileStatus.State.MISSING
+                    ? tr(" · File missing (record kept)", " · الملف مفقود (السجل محفوظ)") : "")
+                    + (availability == LibraryFileStatus.State.NO_ACCESS
+                    ? tr(" · File inaccessible (record kept)",
+                            " · تعذر الوصول إلى الملف (السجل محفوظ)") : "")
                     + (task.state == DownloadService.State.FAILED
                     ? tr(" · Tap to retry", " · اضغط لإعادة المحاولة") : ""));
             final LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(-1, -2);
             detailParams.topMargin = Ui.dp(HistoryActivity.this, 8);
             card.addView(detail, detailParams);
 
-            if (safeSaved) {
+            if (safeSaved && !unavailable) {
                 final LinearLayout actions = new LinearLayout(HistoryActivity.this);
                 actions.setOrientation(LinearLayout.HORIZONTAL);
                 actions.setPadding(0, Ui.dp(HistoryActivity.this, 12), 0, 0);

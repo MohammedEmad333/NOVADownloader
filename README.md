@@ -328,6 +328,28 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - No saved media is copied, deleted, changed, or inspected; downloads and queue
   persistence are unchanged. No new permissions are required.
 
+## NOVA 1.7.8: library stability and UX
+
+- Remember Library search, category, sort and source selectors across visits, with
+  validated stored values and a bounded search string; no account or cloud sync.
+- Check completed, trusted MediaStore files on a background thread using read-only
+  file descriptors. Mark files as missing or inaccessible without removing their
+  Library entries, favorites or stored files. Unknown provider failures are not
+  misclassified as confirmed missing media.
+- Disable external actions for entries confirmed missing or inaccessible, retain
+  readable warnings, and explain errors in both Arabic and English. Recheck saved
+  files when returning to the Library.
+- Distinguish an empty Library from empty search, favorites, source, category and
+  possible-copy results with localized messages.
+- Cache completed/failed totals and duplicate metadata once per Library load.
+  Search and filter changes operate on the snapshot, avoiding repeat queue reads
+  or duplicate scans. Source filtering and grouped sorting use a single pass and
+  sort without changing the underlying queue.
+- Add Robolectric tests for persisted view controls, safe read-only file probing,
+  empty states, duplicate URI deduplication and thousands of Library records.
+- No new permissions, deletion, automatic cleanup, or changes to the download
+  engine. Verification on physical devices is still recommended.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
