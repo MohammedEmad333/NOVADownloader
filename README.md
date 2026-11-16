@@ -390,6 +390,23 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - Adds Robolectric tests for navigation, adaptive column policy, and persisted
   grid preference. Device testing is still recommended.
 
+## NOVA 1.8.1: safe smart Library organization
+
+- Create, rename and remove up to 25 custom collections entirely on-device.
+  Collection membership uses both queue task ID and exact trusted MediaStore URI,
+  protecting against ID reuse. Organizing or removing a collection never changes
+  saved media files or queue records.
+- Filter the Library by collection alongside existing search, source, format,
+  sorting, favorites and duplicate suggestions.
+- Select up to 100 completed, accessible saved items in list or grid mode. The
+  selection is in-memory, reconciled when files change, and supports adding or
+  removing labels, favoriting and read-only sharing of up to 50 files.
+- Review candidate duplicate files in a richer dialog with source, format,
+  availability and record ID. Matches are metadata-only and are never deleted.
+- Corrupt collection metadata is not silently replaced. New Robolectric tests
+  cover persistence, safe membership identity, batch selection and share grants.
+- This update adds no permissions and no file or download deletion features.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download

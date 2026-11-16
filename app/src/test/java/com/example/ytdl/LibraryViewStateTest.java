@@ -37,12 +37,15 @@ public final class LibraryViewStateTest {
             final List<Spinner> selectors = new ArrayList<>();
             final List<EditText> searches = new ArrayList<>();
             findControls(screen.findViewById(android.R.id.content), selectors, searches);
-            assertEquals(3, selectors.size());
+            // Advanced category/sort/source controls precede the collection filter
+            // in the view tree, though the collection row appears below them.
+            assertEquals(4, selectors.size());
             assertEquals(1, searches.size());
             assertEquals(saved.search, searches.get(0).getText().toString());
             assertEquals(6, selectors.get(0).getSelectedItemPosition());
             assertEquals(3, selectors.get(1).getSelectedItemPosition());
             assertEquals(4, selectors.get(2).getSelectedItemPosition());
+            assertEquals(0, selectors.get(3).getSelectedItemPosition());
             screen.finish();
         } finally {
             LibraryViewState.save(context, "", 0, 0, 0);
