@@ -61,7 +61,7 @@ public final class AudioPlaybackServiceTest {
         final ServiceInfo info = context.getPackageManager().getServiceInfo(
                 new android.content.ComponentName(context, AudioPlaybackService.class), 0);
         assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                info.foregroundServiceType & ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+                info.getForegroundServiceType() & ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
         assertFalse(info.exported);
     }
 }
