@@ -87,6 +87,13 @@ public final class LibraryPlaybackTest {
         assertEquals("1:01:01", LocalMediaPlayerActivity.formatTime(3_661_000));
     }
 
+    @Test public void videoSeekIsClampedToLocalDuration() {
+        assertEquals(0, LocalMediaPlayerActivity.seekTarget(-200, 30_000));
+        assertEquals(12_000, LocalMediaPlayerActivity.seekTarget(12_000, 30_000));
+        assertEquals(30_000, LocalMediaPlayerActivity.seekTarget(45_000, 30_000));
+        assertEquals(0, LocalMediaPlayerActivity.seekTarget(500, -1));
+    }
+
     @Test public void skipControlsClampAtStartAndEnd() {
         assertEquals(0, LocalMediaPlayerActivity.skipTarget(4_000, 60_000, -10_000));
         assertEquals(60_000, LocalMediaPlayerActivity.skipTarget(56_000, 60_000, 10_000));

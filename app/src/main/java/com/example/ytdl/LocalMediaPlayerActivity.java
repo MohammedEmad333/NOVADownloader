@@ -46,7 +46,8 @@ public final class LocalMediaPlayerActivity extends Activity {
     private MediaPlayer videoPlayer;
     private AudioPlaybackService audioService;
     private SeekBar audioSeek;
-    private TextView audioTime;
+    private SeekBar videoSeek;
+    private TextView audioTime, videoTime;
     private Button audioToggle, skipBack, skipForward, speedButton, pipButton;
     private View videoControls;
     private DownloadService.Task task;
@@ -69,6 +70,28 @@ public final class LocalMediaPlayerActivity extends Activity {
             if (audioToggle != null) audioToggle.setEnabled(false);
         }
     };
+
+    private final Runnable pollVideo = new Runnable() {
+        @Override public void run() {
+            if (videoView == null || !prepared) return;
+            try {
+                final int duration = Math.max(0, videoView.getDuration());
+                final int current = Math.max(0, videoView.getCurrentPosition());
+                if (videoSeek != null && !videoSeeking) {
+                    videoSeek.setMax(Math.max(1, duration));
+                    videoSeek.setEnabled(duration > 0);
+                    videoSeek.setProgress(Math.min(current, duration));
+                }
+                if (videoTime != null && !videoSeeking) {
+                    videoTime.setText(formatTime(current) + " / " + formatTime(duration));
+                }
+            } catch (IllegalStateException unavailable) {
+                return;
+            }
+            ui.postDelayed(this, 500);
+        }
+    };
+    private boolean videoSeeking;
 
     private final Runnable pollAudio = new Runnable() {
         @Override public void run() {
@@ -111,6 +134,10 @@ public final class LocalMediaPlayerActivity extends Activity {
         return hours > 0
                 ? String.format(Locale.US, "%d:%02d:%02d", hours, minutes, remaining)
                 : String.format(Locale.US, "%d:%02d", minutes, remaining);
+    }
+
+    static int seekTarget(int desiredMs, int durationMs) {
+        return Math.max(0, Math.min(Math.max(0, durationMs), desiredMs));
     }
 
     static int skipTarget(int currentMs, int durationMs, int deltaMs) {
@@ -220,6 +247,32 @@ public final class LocalMediaPlayerActivity extends Activity {
         final LinearLayout tools = new LinearLayout(this);
         tools.setOrientation(LinearLayout.VERTICAL);
         videoControls = tools;
+        videoTime = Ui.mono(this, 13, Ui.MUTED);
+        videoTime.setText("0:00 / 0:00");
+        videoTime.setGravity(Gravity.CENTER);
+        tools.addView(videoTime);
+        videoSeek = new SeekBar(this);
+        videoSeek.setEnabled(false);
+        videoSeek.setContentDescription(tr("Seek video position", "تغيير موضع الفيديو"));
+        videoSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                if (fromUser && videoTime != null && videoView != null) {
+                    videoTime.setText(formatTime(value) + " / "
+                            + formatTime(Math.max(0, videoView.getDuration())));
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) {
+                videoSeeking = true;
+            }
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                if (prepared && videoView != null) {
+                    final int duration = Math.max(0, videoView.getDuration());
+                    if (duration > 0) videoView.seekTo(seekTarget(bar.getProgress(), duration));
+                }
+                videoSeeking = false;
+            }
+        });
+        tools.addView(videoSeek);
         addSkipControls(tools);
         pipButton = Ui.button(this, tr("Mini player (PiP)", "نافذة فيديو عائمة"), false);
         pipButton.setEnabled(false);
@@ -231,6 +284,8 @@ public final class LocalMediaPlayerActivity extends Activity {
             videoPlayer = player;
             prepared = true;
             setSkipEnabled(true);
+            ui.removeCallbacks(pollVideo);
+            ui.post(pollVideo);
             if (pipButton != null) pipButton.setEnabled(true);
             if (position > 0) videoView.seekTo(position);
             if (playWhenReady && (foreground || isInPictureInPictureMode())) videoView.start();
@@ -246,6 +301,10 @@ public final class LocalMediaPlayerActivity extends Activity {
             playWhenReady = false;
             position = 0;
             rememberPosition(this, task, 0, 0);
+            ui.removeCallbacks(pollVideo);
+            if (videoSeek != null) videoSeek.setProgress(0);
+            if (videoTime != null) videoTime.setText("0:00 / "
+                    + formatTime(Math.max(0, videoView.getDuration())));
             status.setText(tr("Playback finished", "انتهى التشغيل"));
         });
     }
@@ -428,6 +487,8 @@ public final class LocalMediaPlayerActivity extends Activity {
         ui.removeCallbacks(pollAudio);
         if (audioToggle != null) audioToggle.setEnabled(false);
         if (audioSeek != null) audioSeek.setEnabled(false);
+        if (videoSeek != null) videoSeek.setEnabled(false);
+        ui.removeCallbacks(pollVideo);
         setSkipEnabled(false);
         if (status != null) status.setText(tr(
                 "NOVA cannot play this format. Try an external player.",
@@ -449,8 +510,10 @@ public final class LocalMediaPlayerActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         foreground = true;
-        if (videoView != null && prepared && playWhenReady && !videoView.isPlaying()) {
-            videoView.start();
+        if (videoView != null && prepared) {
+            ui.removeCallbacks(pollVideo);
+            ui.post(pollVideo);
+            if (playWhenReady && !videoView.isPlaying()) videoView.start();
         }
         if (audioService != null) {
             ui.removeCallbacks(pollAudio);
@@ -461,6 +524,7 @@ public final class LocalMediaPlayerActivity extends Activity {
     @Override protected void onPause() {
         foreground = false;
         ui.removeCallbacks(pollAudio);
+        ui.removeCallbacks(pollVideo);
         if (videoView != null && prepared) {
             playWhenReady = videoView.isPlaying();
             position = videoView.getCurrentPosition();
@@ -488,6 +552,7 @@ public final class LocalMediaPlayerActivity extends Activity {
 
     @Override protected void onDestroy() {
         ui.removeCallbacks(pollAudio);
+        ui.removeCallbacks(pollVideo);
         if (videoView != null) videoView.stopPlayback();
         videoPlayer = null;
         if (audioBound) unbindService(connection);
