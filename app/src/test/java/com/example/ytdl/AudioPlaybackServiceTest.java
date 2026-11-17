@@ -62,7 +62,7 @@ public final class AudioPlaybackServiceTest {
         if (!java.nio.file.Files.isRegularFile(manifest)) {
             manifest = java.nio.file.Path.of("app/src/main/AndroidManifest.xml");
         }
-        final String xml = java.nio.file.Files.readString(manifest);
+        final String xml = new String(java.nio.file.Files.readAllBytes(manifest), java.nio.charset.StandardCharsets.UTF_8);
         assertTrue(xml.contains("android:name=\".AudioPlaybackService\""));
         assertTrue(xml.contains("android:foregroundServiceType=\"mediaPlayback\""));
         assertTrue(xml.contains("android:name=\"android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK\""));
