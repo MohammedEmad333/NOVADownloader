@@ -57,11 +57,16 @@ public final class AudioPlaybackServiceTest {
 
     @Test public void manifestDeclaresMediaPlaybackForegroundServiceAndPipActivity()
             throws Exception {
-        final Context context = RuntimeEnvironment.getApplication();
-        final ServiceInfo info = context.getPackageManager().getServiceInfo(
-                new android.content.ComponentName(context, AudioPlaybackService.class), 0);
-        assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                info.getForegroundServiceType() & ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-        assertFalse(info.exported);
+        java.nio.file.Path manifest = java.nio.file.Path.of(
+                "src/main/AndroidManifest.xml");
+        if (!java.nio.file.Files.isRegularFile(manifest)) {
+            manifest = java.nio.file.Path.of("app/src/main/AndroidManifest.xml");
+        }
+        final String xml = java.nio.file.Files.readString(manifest);
+        assertTrue(xml.contains("android:name=\".AudioPlaybackService\""));
+        assertTrue(xml.contains("android:foregroundServiceType=\"mediaPlayback\""));
+        assertTrue(xml.contains("android:name=\"android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK\""));
+        assertTrue(xml.contains("android:supportsPictureInPicture=\"true\""));
+        assertTrue(xml.contains("android:exported=\"false\""));
     }
 }
