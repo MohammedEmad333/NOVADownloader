@@ -41,7 +41,11 @@ installable. Neither can be described as a production-signed artifact.
    unsigned APK, signs it and verifies signing certificates.
 4. Download the `nova-release-signed-apk` artifact from that workflow.
    Validate its `SHA256SUMS.txt`, installation, certificate identity and
-   media/notification behavior on-device.
+   media/notification behavior on-device. The signing workflow now also checks
+   the package ID, version code and version name **after signing**, and includes
+   `SIGNING_CERT_SHA256.txt` with the public signing-certificate SHA-256 digest.
+   Compare that digest with the previously trusted release certificate before
+   distributing an in-place update. This fingerprint is not a secret.
 5. Create a public version tag or release *only after* these manual gates pass.
    The workflow intentionally does not create GitHub Releases or publish to
    any app store.
