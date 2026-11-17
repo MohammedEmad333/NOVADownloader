@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Do not migrate device-specific MediaStore references and playback/queue metadata. -->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="file" path="queue.json" />
+        <exclude domain="root" path="." />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="file" path="queue.json" />
+        <exclude domain="root" path="." />
     </device-transfer>
 </data-extraction-rules>
