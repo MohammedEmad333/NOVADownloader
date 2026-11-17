@@ -425,6 +425,24 @@ or SoundCloud. Their names and trademarks belong to their respective owners.
 - New Robolectric tests cover safe variant choice, persisted quality selection,
   stale selections, and bilingual failure guidance. No new permissions.
 
+## NOVA 1.9.0: offline player and background audio
+
+- Five locally remembered audio/video speeds: 0.75x, 1x, 1.25x, 1.5x,
+  and 2x. Playback position remains scoped to each saved MediaStore file.
+- Saved video playback supports user-controlled Android Picture-in-Picture
+  (PiP) while playing, with normal pausing when leaving the player outside PiP.
+- Audio playback is moved into a user-started mediaPlayback foreground service
+  with a transport notification, play/pause and stop actions, focus handling,
+  headset-disconnection pausing and periodic position saving.
+- Closing or rotating the player screen no longer releases background audio.
+  Audio never automatically starts on boot, on connectivity, or on a timer.
+- Service accepts only completed, trusted local audio references by task ID.
+  Media files and download queue are not modified by player navigation.
+- Robolectric tests cover speed persistence, PiP eligibility, safe media
+  identities, start intent and foreground mediaPlayback declaration.
+- Device checks remain important for PiP, Android focus and notification
+  permissions across supported Android versions.
+
 ## Getting the APK
 
 **Actions** tab → newest run → wait ~4 minutes → scroll to **Artifacts** → download
