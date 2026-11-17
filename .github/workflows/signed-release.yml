@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   signed-release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -56,9 +57,13 @@ jobs:
           fi
 
           keystore="$RUNNER_TEMP/nova-release.jks"
-          trap 'rm -f "$keystore"' EXIT
+          aligned="$RUNNER_TEMP/nova-release-aligned.apk"
+          trap 'rm -f "$keystore" "$aligned"' EXIT
           printf '%s' "$NOVA_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           chmod 600 "$keystore"
+          aligner="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          "$aligner" -p -f 4 "$unsigned" "$aligned"
+          "$aligner" -c -v 4 "$aligned"
           signer="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           "$signer" sign \
             --ks "$keystore" \
@@ -66,12 +71,16 @@ jobs:
             --ks-pass env:NOVA_KEYSTORE_PASSWORD \
             --key-pass env:NOVA_KEY_PASSWORD \
             --out app/build/outputs/apk/release/nova-release-signed.apk \
-            "$unsigned"
-          "$signer" verify --verbose --min-sdk-version 29 \
+            "$aligned"
+          "$signer" verify --verbose --print-certs --min-sdk-version 29 \
             app/build/outputs/apk/release/nova-release-signed.apk
+          (cd app/build/outputs/apk/release &&
+            sha256sum nova-release-signed.apk > SHA256SUMS.txt)
 
       - uses: actions/upload-artifact@v7
         with:
           name: nova-release-signed-apk
-          path: app/build/outputs/apk/release/nova-release-signed.apk
+          path: |
+            app/build/outputs/apk/release/nova-release-signed.apk
+            app/build/outputs/apk/release/SHA256SUMS.txt
           if-no-files-found: error

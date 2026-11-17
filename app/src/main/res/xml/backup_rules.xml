@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- App queue, favorites, local collections and resume positions refer to device-local media. -->
 <full-backup-content>
-    <exclude domain="file" path="queue.json" />
+    <exclude domain="root" path="." />
 </full-backup-content>

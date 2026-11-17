@@ -1,3 +1,26 @@
+## NOVA 2.0.0: stable-build and privacy readiness
+
+- The app is now versionCode 29 / versionName 2.0.0, retaining the same
+  application ID so an update can preserve installed data **when signed with
+  the same key**. Debug CI builds can use a different ephemeral debug key.
+- Cloud backups and device-to-device extraction of the app's own files and
+  preferences are opted out by default. The on-device queue, favorites,
+  collections, cached playback positions and MediaStore references must not
+  be silently restored onto another device with mismatched local URIs.
+  Already-saved media in Android's shared MediaStore is not removed by this.
+- Android cleartext network traffic is explicitly disabled; trusted HTTPS
+  source requests and existing URL validation remain in place.
+- CI now runs Robolectric unit tests, builds debug **and unsigned release**
+  variants, verifies the release package ID, and uploads a debug APK with
+  a SHA-256 checksum. An unsigned release APK is not an installable/public release.
+- Manual signed release is restricted to main, aligns the APK before signing,
+  verifies its certificate/signatures, and uploads the signed APK with SHA-256.
+  Signing needs maintainer-owned secrets; keys are never committed or generated
+  by the workflow.
+- See `docs/RELEASE_2_0_0.md` for real-device checks and the signed-release
+  checklist. Passing CI does not replace a physical device test or constitute
+  distribution to users.
+
 ## NOVA 1.9.1: video playback polish
 
 - Added a dedicated offline video timeline with current/total time, accessible
