@@ -1,3 +1,14 @@
+## NOVA 1.9.1: video playback polish
+
+- Added a dedicated offline video timeline with current/total time, accessible
+  seek control, and half-second position refresh.
+- Timeline seeking is clamped to the local video's duration and updates only
+  after the media player is prepared.
+- Timeline polling stops when the screen pauses, playback completes, or the
+  Activity is destroyed, avoiding unnecessary background UI updates.
+- Existing audio foreground playback, saved positions, video PiP, and speed
+  preferences remain unchanged.
+
 # NOVA Downloader — Android / Java
 
 NOVA is a redesigned, native Android media downloader built with Java and NewPipeExtractor.
