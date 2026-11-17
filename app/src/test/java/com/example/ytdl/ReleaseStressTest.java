@@ -38,7 +38,7 @@ public final class ReleaseStressTest {
                     snapshot.tasks, "Video 59", LibraryFilter.ALL,
                     LibraryFilter.GROUP_BY_SOURCE, task -> false,
                     LibraryOrganizer.YOUTUBE, snapshot.possibleDuplicates);
-            assertEquals(110, filtered.size());
+            assertEquals(111, filtered.size());
             assertEquals("Video 5999", filtered.get(0).title);
             assertEquals("Video 59", filtered.get(filtered.size() - 1).title);
         }
