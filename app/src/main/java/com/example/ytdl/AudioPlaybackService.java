@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.os.Build;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -149,7 +150,11 @@ public final class AudioPlaybackService extends Service {
                     "Offline audio playback", NotificationManager.IMPORTANCE_LOW));
         }
         final IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
-        registerReceiver(unplugged, filter, Context.RECEIVER_NOT_EXPORTED);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(unplugged, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(unplugged, filter);
+        }
     }
 
     @Override public IBinder onBind(Intent intent) { return binder; }
@@ -201,7 +206,6 @@ public final class AudioPlaybackService extends Service {
         DownloadService.ensureLoaded(this);
         final DownloadService.Task saved = DownloadService.byId(taskId);
         if (!eligible(saved)) {
-            error = "This saved audio file is unavailable";
             stopPlayback();
             return;
         }
