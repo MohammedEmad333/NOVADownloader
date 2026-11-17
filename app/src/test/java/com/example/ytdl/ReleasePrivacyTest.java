@@ -103,6 +103,9 @@ public final class ReleasePrivacyTest {
         assertTrue(signed.contains("zipalign"));
         assertTrue(signed.contains("apksigner"));
         assertTrue(signed.contains("sha256sum nova-release-signed.apk"));
+        assertTrue(signed.contains("versionCode='29' versionName='2.0.0'"));
+        assertTrue(signed.contains("SIGNING_CERT_SHA256.txt"));
+        assertTrue(signed.contains("Signer #1 certificate SHA-256 digest:"));
         for (String key : new String[]{"NOVA_KEYSTORE_BASE64",
                 "NOVA_KEYSTORE_PASSWORD", "NOVA_KEY_ALIAS", "NOVA_KEY_PASSWORD"}) {
             assertTrue("Signing secret is not referenced: " + key, signed.contains(key));
