@@ -1,3 +1,13 @@
+## Next development roadmap (proposed): NOVA 2.0.1 → 3.0.0
+
+The new prioritized development plan is documented in
+[docs/ROADMAP_2_1_TO_3_0.md](docs/ROADMAP_2_1_TO_3_0.md).
+Start with the Android 15+ foreground-service lifecycle issue (#77), then
+advance through queue recovery, Library performance, playback reliability,
+Arabic/English accessibility, source contracts and release quality.
+The 2.0.0 production signing and physical-device gate (#76) remains open.
+These milestones are **planned**, not implemented or production approved.
+
 ## NOVA 2.0.0: stable-build and privacy readiness
 
 - The app is now versionCode 29 / versionName 2.0.0, retaining the same
