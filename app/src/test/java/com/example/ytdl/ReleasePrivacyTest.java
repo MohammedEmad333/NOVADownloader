@@ -95,8 +95,8 @@ public final class ReleasePrivacyTest {
     }
 
     @Test public void signingIsManualMainOnlyAndProducesChecksums() throws Exception {
-        final String signed = Files.readString(
-                source("../.github/workflows/signed-release.yml").toPath(),
+        final String signed = new String(Files.readAllBytes(
+                source("../.github/workflows/signed-release.yml").toPath()),
                 StandardCharsets.UTF_8);
         assertTrue(signed.contains("workflow_dispatch:"));
         assertTrue(signed.contains("if: github.ref == 'refs/heads/main'"));
@@ -107,8 +107,8 @@ public final class ReleasePrivacyTest {
                 "NOVA_KEYSTORE_PASSWORD", "NOVA_KEY_ALIAS", "NOVA_KEY_PASSWORD"}) {
             assertTrue("Signing secret is not referenced: " + key, signed.contains(key));
         }
-        final String regular = Files.readString(
-                source("../.github/workflows/build.yml").toPath(),
+        final String regular = new String(Files.readAllBytes(
+                source("../.github/workflows/build.yml").toPath()),
                 StandardCharsets.UTF_8);
         assertTrue(regular.contains("assembleRelease"));
         assertTrue(regular.contains("app-release-unsigned.apk"));
