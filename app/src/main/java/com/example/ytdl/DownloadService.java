@@ -5,6 +5,8 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -73,6 +75,8 @@ public class DownloadService extends Service {
     private static final String PREFS = "downloader_prefs";
     private static final String PREF_WIFI_ONLY = "wifi_only";
     private static final String PREF_PAUSE_AFTER_CURRENT = "pause_after_current";
+    private static final String PREF_FGS_RESUME_REQUIRED = "fgs_resume_required";
+    private static final int TIMEOUT_NOTIFICATION_ID = 67;
 
     /** What kind of file was asked for. */
     public enum Kind {
@@ -339,6 +343,9 @@ public class DownloadService extends Service {
     private ConnectivityManager.NetworkCallback networkCallback;
     private volatile boolean foregroundReady;
     private volatile boolean serviceStopping;
+    /** Set by the Android 15+ dataSync time-budget callback, visible to worker checkpoints. */
+    private volatile boolean timeoutRequested;
+    private volatile Task processingTask;
 
     /**
      * Reads the queue back from disk. Called from both the activity and the service, since
@@ -529,6 +536,12 @@ public class DownloadService extends Service {
 
     public static boolean isInternetConnectedForUi(final Context context) {
         return DownloadConnectivity.connected(context);
+    }
+
+    /** A device-local notice; cleared only when the service reaches foreground again. */
+    public static boolean requiresForegroundResume(final Context context) {
+        return context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(PREF_FGS_RESUME_REQUIRED, false);
     }
 
     private static boolean isWifiConnected(final Context context) {
@@ -742,7 +755,16 @@ public class DownloadService extends Service {
             intent.putExtra(EXTRA_ACTION, action);
             intent.putExtra(EXTRA_TASK_ID, taskId);
         }
-        context.startForegroundService(intent);
+        try {
+            context.startForegroundService(intent);
+        } catch (final IllegalStateException | SecurityException notAllowed) {
+            // Android may reject a background FGS start after the dataSync budget
+            // is exhausted. The queue was already persisted; no task is lost.
+            android.util.Log.w("DownloadService",
+                    "Android refused to start the transfer foreground service", notAllowed);
+            context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .edit().putBoolean(PREF_FGS_RESUME_REQUIRED, true).apply();
+        }
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -778,7 +800,7 @@ public class DownloadService extends Service {
      * Resume work here, without trying to start a new data-sync FGS from background.
      */
     private void drainWhenNetworkReady() {
-        if (!foregroundReady || serviceStopping
+        if (!foregroundReady || serviceStopping || timeoutRequested
                 || DownloadSchedule.blockedReason(this) != null
                 || !DownloadConnectivity.canTransfer(
                         DownloadConnectivity.connected(this), wifiOnly(this),
@@ -791,11 +813,31 @@ public class DownloadService extends Service {
 
     @Override
     public int onStartCommand(final Intent intent, final int flags, final int startId) {
-        // startForegroundService allows roughly five seconds to reach this before the system
-        // kills the process, so it happens before anything that might block.
-        startForegroundCompat(buildNotification("Downloads", "Starting…", 0, true, null));
+        // A timeout can race with a notification action. Never resurrect a
+        // time-expired service or start an additional worker on this instance.
+        if (timeoutRequested) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        // Start foreground before any blocking work. Android may reject a new
+        // dataSync FGS when its shared six-hour quota is already exhausted.
+        try {
+            startForegroundCompat(buildNotification("Downloads", "Starting…", 0, true, null));
+        } catch (final IllegalStateException | SecurityException restricted) {
+            serviceStopping = true;
+            foregroundReady = false;
+            android.util.Log.w("DownloadService", "Foreground transfer start not allowed",
+                    restricted);
+            stopSelf();
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putBoolean(PREF_FGS_RESUME_REQUIRED, true).apply();
+            showTimeoutNotification();
+            return START_NOT_STICKY;
+        }
         foregroundReady = true;
         serviceStopping = false;
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .remove(PREF_FGS_RESUME_REQUIRED).apply();
 
         if (intent != null && intent.hasExtra(EXTRA_ACTION)) {
             final Task task = byId(intent.getLongExtra(EXTRA_TASK_ID, -1));
@@ -817,9 +859,60 @@ public class DownloadService extends Service {
         return START_NOT_STICKY;
     }
 
+    /**
+     * Android 15+ gives only a few seconds to stop a dataSync FGS on timeout.
+     * Never wait for network, disk, FFmpeg or the worker here. Partial files
+     * stay in cache; on process death, active queue states restore as PAUSED.
+     */
+    @Override
+    public void onTimeout(final int startId, final int fgsType) {
+        timeoutRequested = true;
+        foregroundReady = false;
+        serviceStopping = true;
+        DownloadTimeoutPolicy.requestPause(processingTask);
+        stopSelf(); // Must happen immediately, before SharedPreferences or notifications.
+
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean(PREF_FGS_RESUME_REQUIRED, true).apply();
+        showTimeoutNotification();
+    }
+
+    /** Tap only opens Transfers, it never starts a forbidden background FGS. */
+    private void showTimeoutNotification() {
+        try {
+            if (Build.VERSION.SDK_INT >= 33
+                    && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) return;
+            final NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager == null) return;
+            final Intent open = NovaNavigation.mainIntent(this, NovaNavigation.TRANSFERS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            final PendingIntent tap = PendingIntent.getActivity(this, TIMEOUT_NOTIFICATION_ID,
+                    open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            final Notification reminder = new Notification.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setContentTitle(NovaPreferences.text(this,
+                            "Downloads paused by Android", "أوقف Android التنزيلات مؤقتًا"))
+                    .setContentText(NovaPreferences.text(this,
+                            "Background time limit reached. Open NOVA to resume.",
+                            "انتهت مهلة التنزيل بالخلفية. افتح نوفا للاستئناف."))
+                    .setContentIntent(tap)
+                    .setAutoCancel(true)
+                    .setOnlyAlertOnce(true)
+                    .build();
+            manager.notify(TIMEOUT_NOTIFICATION_ID, reminder);
+        } catch (final RuntimeException notificationError) {
+            // The shutdown must succeed even if notifications are disabled or
+            // the Android notification service refuses to accept this reminder.
+            android.util.Log.w("DownloadService",
+                    "Unable to display timeout reminder", notificationError);
+        }
+    }
+
     @Override
     public void onDestroy() {
         foregroundReady = false;
+        serviceStopping = true;
         final ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         if (cm != null && networkCallback != null) {
             try { cm.unregisterNetworkCallback(networkCallback); } catch (final Exception ignored) {}
@@ -847,15 +940,22 @@ public class DownloadService extends Service {
     private void drainQueue() {
         try {
             Task task;
-            while ((task = nextQueued()) != null) {
+            while (!timeoutRequested && (task = nextQueued()) != null) {
                 // The maintenance lock covers selecting a transfer and processing it.
                 // A manual cleanup cannot overlap any write to a task temp file.
                 CACHE_MAINTENANCE_LOCK.lock();
                 try {
-                    process(task);
+                    if (timeoutRequested) break;
+                    processingTask = task;
+                    try {
+                        process(task);
+                    } finally {
+                        processingTask = null;
+                    }
                 } finally {
                     CACHE_MAINTENANCE_LOCK.unlock();
                 }
+                if (timeoutRequested) break;
                 if (PAUSE_AFTER_CURRENT.getAndSet(false)) {
                     getSharedPreferences(PREFS, MODE_PRIVATE)
                             .edit().putBoolean(PREF_PAUSE_AFTER_CURRENT, false).apply();
@@ -866,7 +966,10 @@ public class DownloadService extends Service {
         } finally {
             serviceStopping = true;
             RUNNING.set(false);
-            finish();
+            // The framework has already demoted/stopped a timed-out service.
+            // Do not detach its foreground notification or overwrite the
+            // separate tap-to-open timeout reminder from a stale worker.
+            if (!timeoutRequested) finish();
         }
     }
 
@@ -897,7 +1000,8 @@ public class DownloadService extends Service {
     }
 
     private Task nextQueued() {
-        if (DownloadSchedule.blockedReason(this) != null
+        if (timeoutRequested || serviceStopping
+                || DownloadSchedule.blockedReason(this) != null
                 || !DownloadConnectivity.canTransfer(
                         DownloadConnectivity.connected(this), wifiOnly(this),
                         isWifiConnected(this))) return null;
@@ -916,6 +1020,7 @@ public class DownloadService extends Service {
     }
 
     private void finish() {
+        if (timeoutRequested) return;
         int saved = 0;
         int failed = 0;
         int paused = 0;
@@ -973,7 +1078,7 @@ public class DownloadService extends Service {
         final Net.Control control = () -> {
             // A user cancel/pause must win over a simultaneous network loss.
             if (task.cancelled) throw new Net.Cancelled();
-            if (task.pauseRequested) throw new Net.Paused();
+            if (task.pauseRequested || timeoutRequested) throw new Net.Paused();
             if (DownloadSchedule.blockedReason(this) != null
                     || !DownloadConnectivity.canTransfer(
                             DownloadConnectivity.connected(this), wifiOnly(this),
@@ -1009,11 +1114,15 @@ public class DownloadService extends Service {
             task.error = null;
         } catch (final Net.Paused e) {
             task.state = State.PAUSED;
-            task.error = null;
+            task.error = timeoutRequested
+                    ? "Android background time limit reached. Open NOVA to resume."
+                    : null;
         } catch (final Net.Cancelled e) {
             task.state = State.CANCELLED;
         } catch (final Exception e) {
-            task.state = stateAfterUnexpectedFailure(task, DownloadConnectivity.connected(this));
+            task.state = timeoutRequested && !task.cancelled
+                    ? State.PAUSED
+                    : stateAfterUnexpectedFailure(task, DownloadConnectivity.connected(this));
             // Transient connectivity loss is not a permanent failed download.
             // Preserve both queue state and the resumable temp file in that case.
             task.error = task.state == State.FAILED
@@ -1178,16 +1287,19 @@ public class DownloadService extends Service {
             control.checkpoint();
             task.state = State.MERGING;
             update(task);
-            mux(video, audio, merged);
+            mux(video, audio, merged, control);
+            control.checkpoint();
 
             task.state = State.SAVING;
             update(task);
-            task.outputUri = publish(merged, task.title + ".mp4", "video/mp4").toString();
+            task.outputUri = publish(merged, task.title + ".mp4", "video/mp4",
+                    control).toString();
         } else {
             control.checkpoint();
             task.state = State.SAVING;
             update(task);
-            task.outputUri = publish(video, task.title + "." + task.extension, task.mimeType).toString();
+            task.outputUri = publish(video, task.title + "." + task.extension,
+                    task.mimeType, control).toString();
         }
     }
 
@@ -1205,7 +1317,8 @@ public class DownloadService extends Service {
         task.mimeType = "video/mp4";
         task.extension = "mp4";
         update(task);
-        task.outputUri = publish(result, task.title + ".mp4", "video/mp4").toString();
+        task.outputUri = publish(result, task.title + ".mp4", "video/mp4",
+                control).toString();
     }
 
     private void stage(final Task task, final State state) {
@@ -1278,7 +1391,8 @@ public class DownloadService extends Service {
                 ? "subtitles" : task.spec.subtitleTag;
         task.extension = language + ".srt";
         task.mimeType = "application/x-subrip";
-        task.outputUri = publish(output, task.title + "." + task.extension, task.mimeType).toString();
+        task.outputUri = publish(output, task.title + "." + task.extension,
+                task.mimeType, control).toString();
     }
 
     private void encodeMp3(final Task task, final File source, final Net.Control control)
@@ -1294,6 +1408,7 @@ public class DownloadService extends Service {
         save(this);
 
         final boolean hasCover = downloadCover(task.coverUrl, cover);
+        control.checkpoint();
         final StringBuilder command = new StringBuilder("-y -i ")
                 .append(q(source.getAbsolutePath())).append(' ');
         if (hasCover) {
@@ -1316,7 +1431,7 @@ public class DownloadService extends Service {
         control.checkpoint();
         task.state = State.SAVING;
         update(task);
-        task.outputUri = publishAudio(output, task.title + ".mp3").toString();
+        task.outputUri = publishAudio(output, task.title + ".mp3", control).toString();
     }
 
     private boolean downloadCover(final String url, final File out) {
@@ -1336,7 +1451,9 @@ public class DownloadService extends Service {
         }
     }
 
-    private Uri publishAudio(final File source, final String displayName) throws IOException {
+    private Uri publishAudio(final File source, final String displayName,
+                             final Net.Control control) throws IOException {
+        control.checkpoint();
         final ContentResolver resolver = getContentResolver();
         final ContentValues values = new ContentValues();
         values.put(MediaStore.Audio.Media.DISPLAY_NAME, displayName);
@@ -1352,8 +1469,12 @@ public class DownloadService extends Service {
                 if (out == null) throw new IOException("Couldn't open MP3 destination");
                 final byte[] buffer = new byte[64 * 1024];
                 int n;
-                while ((n = in.read(buffer)) > 0) out.write(buffer, 0, n);
+                while ((n = in.read(buffer)) > 0) {
+                    control.checkpoint();
+                    out.write(buffer, 0, n);
+                }
             }
+            control.checkpoint();
             values.clear();
             values.put(MediaStore.Audio.Media.IS_PENDING, 0);
             if (resolver.update(uri, values, null, null) <= 0) {
@@ -1447,6 +1568,7 @@ public class DownloadService extends Service {
     }
 
     private void update(final Task task) {
+        if (timeoutRequested) return;
         int waiting = 0;
         for (final Task t : snapshot()) {
             if (t.state == State.QUEUED) {
@@ -1544,8 +1666,9 @@ public class DownloadService extends Service {
      * re-encoding — the bytes are lifted straight across, so a 1080p merge takes a second
      * or two and loses nothing. This is why ffmpeg isn't needed.
      */
-    private static void mux(final File videoFile, final File audioFile, final File output)
-            throws IOException {
+    private static void mux(final File videoFile, final File audioFile, final File output,
+                            final Net.Control control) throws IOException {
+        control.checkpoint();
 
         final MediaExtractor videoExtractor = new MediaExtractor();
         final MediaExtractor audioExtractor = new MediaExtractor();
@@ -1586,8 +1709,9 @@ public class DownloadService extends Service {
             final MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
 
             copyInterleaved(videoExtractor, audioExtractor, muxer, outVideo, outAudio,
-                    buffer, info);
+                    buffer, info, control);
 
+            control.checkpoint();
             muxer.stop();
         } finally {
             if (muxer != null) {
@@ -1618,8 +1742,10 @@ public class DownloadService extends Service {
     private static void copyInterleaved(final MediaExtractor video, final MediaExtractor audio,
                                         final MediaMuxer muxer, final int videoTrack,
                                         final int audioTrack, final ByteBuffer buffer,
-                                        final MediaCodec.BufferInfo info) {
+                                        final MediaCodec.BufferInfo info,
+                                        final Net.Control control) throws IOException {
         while (true) {
+            control.checkpoint();
             // -1 once a track is exhausted.
             final long videoTime = video.getSampleTime();
             final long audioTime = audio.getSampleTime();
@@ -1678,8 +1804,9 @@ public class DownloadService extends Service {
     // ---------------------------------------------------------------- saving
 
     /** IS_PENDING hides the file from the gallery until the copy is actually complete. */
-    private Uri publish(final File source, final String displayName, final String mimeType)
-            throws IOException {
+    private Uri publish(final File source, final String displayName, final String mimeType,
+                        final Net.Control control) throws IOException {
+        control.checkpoint();
         final ContentResolver resolver = getContentResolver();
         final ContentValues values = new ContentValues();
         values.put(MediaStore.Downloads.DISPLAY_NAME, displayName);
@@ -1697,8 +1824,12 @@ public class DownloadService extends Service {
                 }
                 final byte[] buffer = new byte[64 * 1024];
                 int read;
-                while ((read = in.read(buffer)) > 0) out.write(buffer, 0, read);
+                while ((read = in.read(buffer)) > 0) {
+                    control.checkpoint();
+                    out.write(buffer, 0, read);
+                }
             }
+            control.checkpoint();
             values.clear();
             values.put(MediaStore.Downloads.IS_PENDING, 0);
             if (resolver.update(uri, values, null, null) <= 0) {
