@@ -1081,6 +1081,7 @@ public class DownloadService extends Service {
     // ---------------------------------------------------------------- one task
 
     private void process(final Task task) {
+        boolean preserveUnsafePartial = false;
         final Net.Control control = () -> {
             // A user cancel/pause must win over a simultaneous network loss.
             if (task.cancelled) throw new Net.Cancelled();
@@ -1128,17 +1129,29 @@ public class DownloadService extends Service {
                     : null;
         } catch (final Net.Cancelled e) {
             task.state = State.CANCELLED;
+        } catch (final Net.UnsafeResume e) {
+            // Do not append a different HTTP representation or discard the
+            // original partial. Explicit Retry will clear it and start fresh.
+            preserveUnsafePartial = !task.cancelled;
+            task.state = task.cancelled ? State.CANCELLED : State.FAILED;
+            task.error = task.cancelled ? null
+                    : "Saved partial cannot safely resume. Use Retry download to restart.";
         } catch (final Exception e) {
-            task.state = timeoutRequested && !task.cancelled
-                    ? State.PAUSED
+            final boolean recoverable = Net.isRecoverableInterruption(e);
+            task.state = timeoutRequested && !task.cancelled ? State.PAUSED
+                    : recoverable && !task.cancelled && !task.pauseRequested ? State.PAUSED
                     : stateAfterUnexpectedFailure(task, DownloadConnectivity.connected(this));
-            // Transient connectivity loss is not a permanent failed download.
-            // Preserve both queue state and the resumable temp file in that case.
+            // A dropped connection or exhausted bounded retry should keep
+            // the bytes and wait for an explicit user Resume, not spin forever.
             task.error = task.state == State.FAILED
-                    ? (e.getMessage() == null ? e.toString() : e.getMessage()) : null;
+                    ? (e.getMessage() == null ? e.toString() : e.getMessage())
+                    : recoverable && task.state == State.PAUSED
+                    ? "Transfer interrupted. Tap Resume to try again." : null;
         } finally {
-            // The one case where temp files are kept: they're the resume point.
-            if (task.state != State.PAUSED && task.state != State.QUEUED) {
+            // Preserve a rejected partial for inspection until the user
+            // explicitly chooses Retry. Cancel always retains deletion semantics.
+            if (task.state != State.PAUSED && task.state != State.QUEUED
+                    && !preserveUnsafePartial) {
                 deleteTemps(this, task);
             }
             update(task);

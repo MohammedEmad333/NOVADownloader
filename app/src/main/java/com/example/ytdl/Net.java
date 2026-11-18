@@ -85,7 +85,7 @@ public final class Net {
     }
 
     /** A resumed response that cannot be safely appended to the existing partial file. */
-    private static final class UnsafeResume extends IOException {
+    static final class UnsafeResume extends IOException {
         UnsafeResume(final String message) {
             super(message);
         }
@@ -177,7 +177,7 @@ public final class Net {
                                     unsatisfiedRangeTotal(response.header("Content-Range"));
                             if (reportedTotal > 0 && written == reportedTotal) {
                                 if (expectedTotal > 0 && reportedTotal != expectedTotal) {
-                                    throw new IOException("stream length changed on resume ("
+                                    throw new UnsafeResume("stream length changed on resume ("
                                             + expectedTotal + " -> " + reportedTotal + " bytes)");
                                 }
                                 progress.onProgress(written, reportedTotal);
@@ -284,7 +284,7 @@ public final class Net {
                             // A re-derived URL that reports a different length isn't the stream
                             // we already have bytes from. Appending would corrupt silently.
                             if (expectedTotal > 0 && total > 0 && total != expectedTotal) {
-                                throw new IOException("stream changed since it was queued ("
+                                throw new UnsafeResume("stream changed since it was queued ("
                                         + expectedTotal + " -> " + total + " bytes)");
                             }
                         }
@@ -426,6 +426,25 @@ public final class Net {
             throw new IOException("not enough storage space (need about "
                     + required / (1024 * 1024) + " MB free)");
         }
+    }
+
+    /** Bounded-retry exhaustion that should be user-recoverable, not destructive. */
+    static boolean isRecoverableInterruption(final Exception error) {
+        if (!(error instanceof IOException) || error instanceof UnsafeResume) return false;
+        if (error instanceof java.net.SocketException
+                || error instanceof java.io.InterruptedIOException
+                || error instanceof java.io.EOFException) return true;
+        final String message = error.getMessage();
+        return message != null
+                && (message.startsWith("HTTP 408")
+                    || message.startsWith("HTTP 425")
+                    || message.startsWith("HTTP 429")
+                    || message.startsWith("HTTP 500")
+                    || message.startsWith("HTTP 502")
+                    || message.startsWith("HTTP 503")
+                    || message.startsWith("HTTP 504")
+                    || message.startsWith("truncated 206 response")
+                    || message.startsWith("not enough storage space"));
     }
 
     private static boolean isTransientHttp(final int code) {

@@ -353,6 +353,16 @@ public class NetResumeTest {
         assertEquals("\"strong\"", Net.strongEtag("\"strong\""));
     }
 
+    @Test public void recoverableNetworkErrorsAreSeparatedFromUnsafeResumes() throws Exception {
+        assertTrue(Net.isRecoverableInterruption(new java.net.SocketTimeoutException("read timeout")));
+        assertTrue(Net.isRecoverableInterruption(new java.io.EOFException("connection dropped")));
+        assertTrue(Net.isRecoverableInterruption(new IOException("HTTP 429 (rate limited)")));
+        assertTrue(Net.isRecoverableInterruption(new IOException("not enough storage space")));
+        assertFalse(Net.isRecoverableInterruption(new IOException("HTTP 403")));
+        assertFalse(Net.isRecoverableInterruption(new Net.UnsafeResume("range mismatch")));
+        assertFalse(Net.isRecoverableInterruption(new IllegalStateException("codec error")));
+    }
+
     @Test public void persistedStrongEtagRejectsChangedSameLengthAfterRestart() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(206)
                 .setHeader("Content-Range", "bytes 0-3/8")
