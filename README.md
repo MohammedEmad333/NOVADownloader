@@ -1,3 +1,20 @@
+## NOVA 2.1.0: Safer resume identity
+
+- Persist strong HTTP ETags in atomic local sidecars for new partial downloads.
+- Reuse the strong validator in `If-Range` after a process restart, and refuse
+  to append when a server changes or removes it. Preserve existing bytes on
+  mismatch so the user can decide whether to restart.
+- Remove validator sidecars when cancelling, completing or explicitly retrying
+  a failed transfer. A fresh retry clears old partials before re-resolving URLs.
+- Unsafe resumed responses now preserve old partials in a failed-but-retryable
+  state. Explicit Retry clears old fragments before downloading from scratch.
+  Recoverable interruptions pause rather than deleting partials or spinning
+  through repeated background retries.
+- Legacy partials without an ETag remain compatible; length/range checks
+  still apply but cross-session byte identity cannot be guaranteed without a
+  trusted validator. Device acceptance and production signing remain separate.
+- Version `2.1.0` (code `31`).
+
 ## NOVA 2.0.1: Android 15+ foreground timeout safety
 
 - Respond to the Android `dataSync` foreground-service time budget callback:

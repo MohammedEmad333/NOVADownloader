@@ -86,6 +86,15 @@ public class QueueRecoveryTest {
                 DownloadService.stateAfterUnexpectedFailure(item, false));
     }
 
+    @Test public void rejectedResumePreservesBytesUntilExplicitRetry() {
+        assertTrue(DownloadService.keepTempFilesAfter(DownloadService.State.FAILED, true));
+        assertTrue(DownloadService.keepTempFilesAfter(DownloadService.State.PAUSED, false));
+        assertTrue(DownloadService.keepTempFilesAfter(DownloadService.State.QUEUED, false));
+        assertFalse(DownloadService.keepTempFilesAfter(DownloadService.State.FAILED, false));
+        assertFalse(DownloadService.keepTempFilesAfter(DownloadService.State.DONE, false));
+        assertFalse(DownloadService.keepTempFilesAfter(DownloadService.State.CANCELLED, false));
+    }
+
     @Test public void badOrOverflowingIdsAreRejected() throws Exception {
         final JSONArray array = new JSONArray();
         array.put(task(-1, "DONE"));

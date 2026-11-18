@@ -7,6 +7,9 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -82,7 +85,7 @@ public final class Net {
     }
 
     /** A resumed response that cannot be safely appended to the existing partial file. */
-    private static final class UnsafeResume extends IOException {
+    static final class UnsafeResume extends IOException {
         UnsafeResume(final String message) {
             super(message);
         }
@@ -136,7 +139,7 @@ public final class Net {
         long total = -1;
         // This strong entity tag is scoped to one transfer attempt. It prevents
         // mixing bytes from two different HTTP representations between chunks.
-        String rangeValidator = null;
+        String rangeValidator = ResumeIdentity.read(dest);
         ensureWritableSpace(dest, CHUNK_BYTES);
 
         // Append, never truncate — the existing bytes are the resume point.
@@ -174,7 +177,7 @@ public final class Net {
                                     unsatisfiedRangeTotal(response.header("Content-Range"));
                             if (reportedTotal > 0 && written == reportedTotal) {
                                 if (expectedTotal > 0 && reportedTotal != expectedTotal) {
-                                    throw new IOException("stream length changed on resume ("
+                                    throw new UnsafeResume("stream length changed on resume ("
                                             + expectedTotal + " -> " + reportedTotal + " bytes)");
                                 }
                                 progress.onProgress(written, reportedTotal);
@@ -246,12 +249,18 @@ public final class Net {
                                         + total + " -> " + rangeTotal + " bytes)");
                             }
                             final String responseEtag = strongEtag(response.header("ETag"));
-                            if (rangeValidator != null && responseEtag != null
+                            if (rangeValidator != null
                                     && !rangeValidator.equals(responseEtag)) {
-                                throw new UnsafeResume("stream ETag changed between chunks");
+                                throw new UnsafeResume("stream ETag changed or disappeared"
+                                        + " between chunks/resume");
                             }
                             if (rangeValidator == null) {
                                 rangeValidator = responseEtag;
+                                // Do not certify pre-existing bytes from an old download
+                                // unless they were captured with this same validator.
+                                if (requestStart == 0 && responseEtag != null) {
+                                    ResumeIdentity.write(dest, responseEtag);
+                                }
                             }
                             declaredRangeBytes = rangeEnd - rangeStart + 1;
                         }
@@ -275,7 +284,7 @@ public final class Net {
                             // A re-derived URL that reports a different length isn't the stream
                             // we already have bytes from. Appending would corrupt silently.
                             if (expectedTotal > 0 && total > 0 && total != expectedTotal) {
-                                throw new IOException("stream changed since it was queued ("
+                                throw new UnsafeResume("stream changed since it was queued ("
                                         + expectedTotal + " -> " + total + " bytes)");
                             }
                         }
@@ -349,6 +358,65 @@ public final class Net {
         }
     }
 
+    /**
+     * Strong ETag recorded alongside the partial. Without a persisted validator,
+     * a same-length changed representation could be silently spliced after a
+     * process restart. Legacy partials without a sidecar remain supported but
+     * cannot claim cross-session identity verification.
+     */
+    static final class ResumeIdentity {
+        private ResumeIdentity() {}
+
+        static File sidecar(final File partial) {
+            return new File(partial.getAbsolutePath() + ".etag");
+        }
+
+        static String read(final File partial) throws IOException {
+            final File sidecar = sidecar(partial);
+            if (!partial.isFile() || partial.length() == 0) {
+                // A stale sidecar must never apply to a new zero-length transfer.
+                delete(partial);
+                return null;
+            }
+            if (!sidecar.isFile()) return null;
+            if (Files.size(sidecar.toPath()) > 200) {
+                throw new UnsafeResume("invalid saved stream validator");
+            }
+            final byte[] bytes = Files.readAllBytes(sidecar.toPath());
+            final String etag = new String(bytes, StandardCharsets.UTF_8);
+            if (!etag.equals(strongEtag(etag))) {
+                throw new UnsafeResume("invalid saved stream validator");
+            }
+            return etag;
+        }
+
+        static void write(final File partial, final String etag) throws IOException {
+            if (!etag.equals(strongEtag(etag))) {
+                throw new IOException("unsafe stream validator");
+            }
+            final File sidecar = sidecar(partial);
+            final File staging = new File(sidecar.getAbsolutePath() + ".new");
+            try {
+                Files.write(staging.toPath(), etag.getBytes(StandardCharsets.UTF_8));
+                try {
+                    Files.move(staging.toPath(), sidecar.toPath(),
+                            StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (final java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                    Files.move(staging.toPath(), sidecar.toPath(),
+                            StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(staging.toPath());
+            }
+        }
+
+        static void delete(final File partial) {
+            sidecar(partial).delete();
+            new File(sidecar(partial).getAbsolutePath() + ".new").delete();
+        }
+    }
+
     private static void ensureWritableSpace(final File dest, final long upcomingBytes)
             throws IOException {
         final File parent = dest.getParentFile();
@@ -360,6 +428,25 @@ public final class Net {
             throw new IOException("not enough storage space (need about "
                     + required / (1024 * 1024) + " MB free)");
         }
+    }
+
+    /** Bounded-retry exhaustion that should be user-recoverable, not destructive. */
+    static boolean isRecoverableInterruption(final Exception error) {
+        if (!(error instanceof IOException) || error instanceof UnsafeResume) return false;
+        if (error instanceof java.net.SocketException
+                || error instanceof java.io.InterruptedIOException
+                || error instanceof java.io.EOFException) return true;
+        final String message = error.getMessage();
+        return message != null
+                && (message.startsWith("HTTP 408")
+                    || message.startsWith("HTTP 425")
+                    || message.startsWith("HTTP 429")
+                    || message.startsWith("HTTP 500")
+                    || message.startsWith("HTTP 502")
+                    || message.startsWith("HTTP 503")
+                    || message.startsWith("HTTP 504")
+                    || message.startsWith("truncated 206 response")
+                    || message.startsWith("not enough storage space"));
     }
 
     private static boolean isTransientHttp(final int code) {
