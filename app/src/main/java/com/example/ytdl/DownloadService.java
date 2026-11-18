@@ -702,6 +702,9 @@ public class DownloadService extends Service {
     public static void retry(final Context context, final Task task) {
         if (task == null || (task.state != State.FAILED
                 && task.state != State.CANCELLED)) return;
+        // A fresh retry must not reuse a partial or its strong ETag when the
+        // stream identity is unknown or was rejected.
+        deleteTemps(context, task);
         task.error = null;
         task.outputUri = null;
         task.cancelled = false;
@@ -1363,6 +1366,8 @@ public class DownloadService extends Service {
     }
 
     private static void deleteTemps(final Context c, final Task t) {
+        Net.ResumeIdentity.delete(videoTemp(c, t));
+        Net.ResumeIdentity.delete(audioTemp(c, t));
         videoTemp(c, t).delete();
         audioTemp(c, t).delete();
         mergedTemp(c, t).delete();

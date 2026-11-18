@@ -7,6 +7,9 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
@@ -136,7 +139,7 @@ public final class Net {
         long total = -1;
         // This strong entity tag is scoped to one transfer attempt. It prevents
         // mixing bytes from two different HTTP representations between chunks.
-        String rangeValidator = null;
+        String rangeValidator = ResumeIdentity.read(dest);
         ensureWritableSpace(dest, CHUNK_BYTES);
 
         // Append, never truncate — the existing bytes are the resume point.
@@ -246,12 +249,18 @@ public final class Net {
                                         + total + " -> " + rangeTotal + " bytes)");
                             }
                             final String responseEtag = strongEtag(response.header("ETag"));
-                            if (rangeValidator != null && responseEtag != null
+                            if (rangeValidator != null
                                     && !rangeValidator.equals(responseEtag)) {
-                                throw new UnsafeResume("stream ETag changed between chunks");
+                                throw new UnsafeResume("stream ETag changed or disappeared"
+                                        + " between chunks/resume");
                             }
                             if (rangeValidator == null) {
                                 rangeValidator = responseEtag;
+                                // Do not certify pre-existing bytes from an old download
+                                // unless they were captured with this same validator.
+                                if (requestStart == 0 && responseEtag != null) {
+                                    ResumeIdentity.write(dest, responseEtag);
+                                }
                             }
                             declaredRangeBytes = rangeEnd - rangeStart + 1;
                         }
@@ -346,6 +355,63 @@ public final class Net {
                     throw new IOException("stalled at " + written + " bytes");
                 }
             }
+        }
+    }
+
+    /**
+     * Strong ETag recorded alongside the partial. Without a persisted validator,
+     * a same-length changed representation could be silently spliced after a
+     * process restart. Legacy partials without a sidecar remain supported but
+     * cannot claim cross-session identity verification.
+     */
+    static final class ResumeIdentity {
+        private ResumeIdentity() {}
+
+        static File sidecar(final File partial) {
+            return new File(partial.getAbsolutePath() + ".etag");
+        }
+
+        static String read(final File partial) throws IOException {
+            final File sidecar = sidecar(partial);
+            if (!partial.isFile() || partial.length() == 0) {
+                // A stale sidecar must never apply to a new zero-length transfer.
+                delete(partial);
+                return null;
+            }
+            if (!sidecar.isFile()) return null;
+            final byte[] bytes = Files.readAllBytes(sidecar.toPath());
+            if (bytes.length > 200) throw new IOException("invalid saved stream validator");
+            final String etag = new String(bytes, StandardCharsets.UTF_8);
+            if (!etag.equals(strongEtag(etag))) {
+                throw new IOException("invalid saved stream validator");
+            }
+            return etag;
+        }
+
+        static void write(final File partial, final String etag) throws IOException {
+            if (!etag.equals(strongEtag(etag))) {
+                throw new IOException("unsafe stream validator");
+            }
+            final File sidecar = sidecar(partial);
+            final File staging = new File(sidecar.getAbsolutePath() + ".new");
+            try {
+                Files.write(staging.toPath(), etag.getBytes(StandardCharsets.UTF_8));
+                try {
+                    Files.move(staging.toPath(), sidecar.toPath(),
+                            StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (final java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                    Files.move(staging.toPath(), sidecar.toPath(),
+                            StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(staging.toPath());
+            }
+        }
+
+        static void delete(final File partial) {
+            sidecar(partial).delete();
+            new File(sidecar(partial).getAbsolutePath() + ".new").delete();
         }
     }
 

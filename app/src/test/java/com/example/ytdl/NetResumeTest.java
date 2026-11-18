@@ -353,6 +353,64 @@ public class NetResumeTest {
         assertEquals("\"strong\"", Net.strongEtag("\"strong\""));
     }
 
+    @Test public void persistedStrongEtagRejectsChangedSameLengthAfterRestart() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes 0-3/8")
+                .setHeader("ETag", "\"first\"")
+                .setBody("ABCD"));
+        File partial = new File(folder.getRoot(), "etag-restart.part");
+        final Net.Control pauseAfterFirst = () -> {
+            if (partial.length() >= 4) throw new Net.Paused();
+        };
+        try {
+            Net.fetchToFile(server.url("/media").toString(), partial, 8,
+                    progress, pauseAfterFirst);
+            fail("expected pause");
+        } catch (Net.Paused expected) {
+            assertEquals("ABCD", read(partial));
+        }
+        assertEquals("\"first\"", Net.ResumeIdentity.read(partial));
+        server.enqueue(new MockResponse().setResponseCode(206)
+                .setHeader("Content-Range", "bytes 4-7/8")
+                .setHeader("ETag", "\"different\"")
+                .setBody("WXYZ"));
+        try {
+            Net.fetchToFile(server.url("/media").toString(), partial, 8,
+                    progress, control);
+            fail("changed ETag accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("ETag changed"));
+        }
+        assertEquals("ABCD", read(partial));
+        assertNotNull(server.takeRequest(3, TimeUnit.SECONDS));
+        RecordedRequest resumed = server.takeRequest(3, TimeUnit.SECONDS);
+        assertEquals("\"first\"", resumed.getHeader("If-Range"));
+    }
+
+    @Test public void staleOrMalformedValidatorCannotAuthorizeResume() throws Exception {
+        File partial = new File(folder.getRoot(), "etag-corrupt.part");
+        Files.write(partial.toPath(), "AB".getBytes(StandardCharsets.UTF_8));
+        Files.write(Net.ResumeIdentity.sidecar(partial).toPath(),
+                "W/\"weak\"".getBytes(StandardCharsets.UTF_8));
+        try {
+            Net.ResumeIdentity.read(partial);
+            fail("invalid sidecar accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("invalid saved stream validator"));
+        }
+        assertEquals("AB", read(partial));
+        Net.ResumeIdentity.delete(partial);
+        assertNull(Net.ResumeIdentity.read(partial));
+        assertEquals("AB", read(partial));
+    }
+
+    @Test public void sidecarIsClearedForEmptyOrMissingPartial() throws Exception {
+        File partial = new File(folder.getRoot(), "etag-empty.part");
+        Net.ResumeIdentity.write(partial, "\"stale\"");
+        assertNull(Net.ResumeIdentity.read(partial));
+        assertFalse(Net.ResumeIdentity.sidecar(partial).exists());
+    }
+
     private static String read(File file) throws Exception {
         return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
     }
