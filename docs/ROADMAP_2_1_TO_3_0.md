@@ -27,6 +27,9 @@ Scope: native Android/Java, minSdk 29, targetSdk 36, same app ID `com.example.yt
 
 ### 2.0.1 — Critical lifecycle safety (P0, first)
 
+Implementation tracked by [#77](https://github.com/MohammedEmad333/NOVADownloader/issues/77).
+Automated regression validation does **not** replace the Android 15/16 physical-device timeout test or signed-release approval.
+
 **Goal:** Address dataSync foreground service limits and stop/restart races *before* further feature additions.
 
 - Audit `DownloadService` behavior on Android 15/16: `onTimeout(int,int)`, service stop, foreground eligibility, network callbacks, notifications, pause/cancel precedence and persisted queue snapshots.

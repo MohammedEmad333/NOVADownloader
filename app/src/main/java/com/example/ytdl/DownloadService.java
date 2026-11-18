@@ -518,7 +518,10 @@ public class DownloadService extends Service {
 
     /** Start queued work only when the current foreground interaction may start a service. */
     public static void pokeIfReady(final Context context) {
-        if (DownloadSchedule.blockedReason(context) != null
+        // An Android budget timeout is not permission for an automatic
+        // background or on-resume restart. Require an explicit user command.
+        if (requiresForegroundResume(context)
+                || DownloadSchedule.blockedReason(context) != null
                 || !DownloadConnectivity.canTransfer(
                         DownloadConnectivity.connected(context),
                         wifiOnly(context), isWifiConnected(context))) return;
@@ -1108,6 +1111,9 @@ public class DownloadService extends Service {
                 }
             }
 
+            // A late Android timeout may land between publishing and the last
+            // task state update. Completed media still wins: no false PAUSED
+            // state for a successfully published MediaStore row.
             task.state = State.DONE;
         } catch (final Net.NetworkBlocked e) {
             task.state = State.QUEUED;

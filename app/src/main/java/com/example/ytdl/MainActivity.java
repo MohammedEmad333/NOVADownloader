@@ -1854,8 +1854,12 @@ public class MainActivity extends Activity {
             final boolean waitingForWifi = !waitingForInternet
                     && DownloadService.wifiOnly(this) && waiting > 0
                     && !DownloadService.isWifiConnectedForUi(this);
-            queueSummary.setText((waitingForInternet
-                    ? NovaPreferences.text(this, "Waiting for internet · ",
+            queueSummary.setText((DownloadService.requiresForegroundResume(this)
+                    ? tr("Android paused background downloads. Choose Resume to continue. · ",
+                            "أوقف Android التنزيلات بالخلفية. اختر استئناف للمتابعة. · ")
+                    : "")
+                    + (waitingForInternet
+                    ? NovaPreferences.text(this, "Waiting for internet · " ,
                             "بانتظار الإنترنت · ")
                     : waitingForWifi
                     ? NovaPreferences.text(this, "Waiting for Wi-Fi · ",
