@@ -379,11 +379,13 @@ public final class Net {
                 return null;
             }
             if (!sidecar.isFile()) return null;
+            if (Files.size(sidecar.toPath()) > 200) {
+                throw new UnsafeResume("invalid saved stream validator");
+            }
             final byte[] bytes = Files.readAllBytes(sidecar.toPath());
-            if (bytes.length > 200) throw new IOException("invalid saved stream validator");
             final String etag = new String(bytes, StandardCharsets.UTF_8);
             if (!etag.equals(strongEtag(etag))) {
-                throw new IOException("invalid saved stream validator");
+                throw new UnsafeResume("invalid saved stream validator");
             }
             return etag;
         }

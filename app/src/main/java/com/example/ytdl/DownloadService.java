@@ -1080,6 +1080,11 @@ public class DownloadService extends Service {
 
     // ---------------------------------------------------------------- one task
 
+    /** A rejected representation remains available until explicit Retry/Cancel. */
+    static boolean keepTempFilesAfter(final State state, final boolean unsafeResume) {
+        return state == State.PAUSED || state == State.QUEUED || unsafeResume;
+    }
+
     private void process(final Task task) {
         boolean preserveUnsafePartial = false;
         final Net.Control control = () -> {
@@ -1150,8 +1155,7 @@ public class DownloadService extends Service {
         } finally {
             // Preserve a rejected partial for inspection until the user
             // explicitly chooses Retry. Cancel always retains deletion semantics.
-            if (task.state != State.PAUSED && task.state != State.QUEUED
-                    && !preserveUnsafePartial) {
+            if (!keepTempFilesAfter(task.state, preserveUnsafePartial)) {
                 deleteTemps(this, task);
             }
             update(task);
