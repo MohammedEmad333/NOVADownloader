@@ -1,3 +1,23 @@
+## NOVA 2.0.1: Android 15+ foreground timeout safety
+
+- Respond to the Android `dataSync` foreground-service time budget callback:
+  stop the service promptly, request cooperative pause of an active download,
+  and preserve queued and partially downloaded media for recovery.
+- Worker checkpoints now apply during muxing and MediaStore publication as
+  well as network transfer. If a task is interrupted before final publication,
+  only its own pending MediaStore row is rolled back by the existing ledger;
+  completed items and resumable cache files are never automatically removed.
+- A bilingual notification opens Transfers without starting a background
+  foreground service. After a budget timeout, NOVA does not automatically
+  restart pending work on the next app resume; use an explicit Resume action.
+- Local state tracks a timeout until a foreground service start succeeds.
+  Android may still refuse to launch a service until its quota resets.
+- Added regression tests for cancellation precedence, terminal tasks,
+  persistence and Android 15+ callback behavior.
+- Version `2.0.1` / code `30`. Signed release workflow now validates the
+  current APK identity. **Production signing and real-device verification
+  are still outstanding.**
+
 ## Next development roadmap (proposed): NOVA 2.0.1 → 3.0.0
 
 The new prioritized development plan is documented in
