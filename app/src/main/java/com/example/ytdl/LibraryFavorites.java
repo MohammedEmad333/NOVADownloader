@@ -3,6 +3,11 @@ package com.example.ytdl;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Local-only favorites. A record includes the exact saved MediaStore URI,
@@ -32,6 +37,19 @@ final class LibraryFavorites {
     static boolean isFavorite(Context context, DownloadService.Task task) {
         return eligible(task) && task.outputUri.equals(
                 preferences(context).getString(PREFIX + task.id, null));
+    }
+
+    /** Read preferences just once per Library snapshot, not once for every row. */
+    static Set<Long> favoriteIds(Context context, List<DownloadService.Task> tasks) {
+        if (tasks == null || tasks.isEmpty()) return Collections.emptySet();
+        final Map<String, ?> saved = preferences(context).getAll();
+        final Set<Long> result = new HashSet<>();
+        for (DownloadService.Task task : tasks) {
+            if (eligible(task) && task.outputUri.equals(saved.get(PREFIX + task.id))) {
+                result.add(task.id);
+            }
+        }
+        return Collections.unmodifiableSet(result);
     }
 
     static boolean toggle(Context context, DownloadService.Task task) {

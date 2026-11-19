@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -65,6 +67,11 @@ public final class HistoryActivity extends Activity {
     private boolean selectionMode;
     private boolean rebuildingCollectionFilter;
     private LibrarySnapshot catalog = LibrarySnapshot.EMPTY;
+    private LibraryQueryIndex queryIndex = new LibraryQueryIndex(Collections.emptyList());
+    private Set<Long> favoriteIds = Collections.emptySet();
+    private static final long SEARCH_DEBOUNCE_MS = 180;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final Runnable applySearch = this::updateView;
     private Set<Long> possibleDuplicates = Collections.emptySet();
     private Map<String, LibraryFileStatus.State> fileStatuses = Collections.emptyMap();
     private Thread fileScan;
@@ -95,6 +102,8 @@ public final class HistoryActivity extends Activity {
 
     @Override
     protected void onPause() {
+        uiHandler.removeCallbacks(applySearch);
+        saveViewState();
         stopFileScan();
         super.onPause();
     }
@@ -207,7 +216,8 @@ public final class HistoryActivity extends Activity {
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence value, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence value, int start, int before, int count) {
-                updateView();
+                uiHandler.removeCallbacks(applySearch);
+                uiHandler.postDelayed(applySearch, SEARCH_DEBOUNCE_MS);
             }
             @Override public void afterTextChanged(Editable value) {}
         });
@@ -547,13 +557,19 @@ public final class HistoryActivity extends Activity {
                 Toast.LENGTH_LONG).show();
     }
 
-    private void updateView() {
+    private void saveViewState() {
         if (restoringView) return;
         LibraryViewState.save(this,
                 search == null ? "" : search.getText().toString(),
                 category == null ? 0 : category.getSelectedItemPosition(),
                 sort == null ? 0 : sort.getSelectedItemPosition(),
                 source == null ? 0 : source.getSelectedItemPosition(), gridMode);
+    }
+
+    private void updateView() {
+        if (restoringView) return;
+        uiHandler.removeCallbacks(applySearch);
+        saveViewState();
         updateLayoutControls();
         renderLibrary();
     }
@@ -563,6 +579,8 @@ public final class HistoryActivity extends Activity {
         // MediaStore. Typing and changing selectors reuse cached metadata.
         catalog = LibrarySnapshot.capture(DownloadService.snapshot());
         possibleDuplicates = catalog.possibleDuplicates;
+        queryIndex = new LibraryQueryIndex(catalog.tasks);
+        favoriteIds = LibraryFavorites.favoriteIds(this, catalog.tasks);
         selection.retainValid(catalog.tasks, fileStatuses);
         restoreCollections(activeCollectionId);
         renderLibrary();
@@ -576,15 +594,12 @@ public final class HistoryActivity extends Activity {
         final String query = search == null ? "" : search.getText().toString();
         final LibraryCollections.Collection active =
                 LibraryCollections.byId(collections, activeCollectionId);
-        final List<DownloadService.Task> filtered = LibraryFilter.select(
-                catalog.tasks, query,
+        final List<DownloadService.Task> filtered = queryIndex.select(query,
                 selectedCategory == 6 ? LibraryFilter.ALL : selectedCategory,
-                selectedSort, task -> LibraryFavorites.isFavorite(this, task),
-                selectedSource, selectedCategory == 6 ? possibleDuplicates : null);
+                selectedSort, selectedSource, favoriteIds,
+                selectedCategory == 6 ? possibleDuplicates : null, active);
         items.clear();
-        for (DownloadService.Task task : filtered) {
-            if (active == null || active.contains(task)) items.add(task);
-        }
+        items.addAll(filtered);
         if (summary != null) {
             int missing = 0;
             int denied = 0;
@@ -657,6 +672,7 @@ public final class HistoryActivity extends Activity {
                 changed++;
             }
         }
+        favoriteIds = LibraryFavorites.favoriteIds(this, catalog.tasks);
         renderLibrary();
         Toast.makeText(this, tr(changed + " added to Favorites",
                 "أضيف " + changed + " إلى المفضلة"), Toast.LENGTH_SHORT).show();
@@ -868,6 +884,7 @@ public final class HistoryActivity extends Activity {
 
     private void toggleFavorite(final DownloadService.Task task) {
         LibraryFavorites.toggle(this, task);
+        favoriteIds = LibraryFavorites.favoriteIds(this, catalog.tasks);
         renderLibrary();
     }
 
@@ -993,7 +1010,7 @@ public final class HistoryActivity extends Activity {
             heading.setGravity(Gravity.CENTER_VERTICAL);
             final TextView title = Ui.headline(HistoryActivity.this, 15);
             title.setText((chosen ? "☑  " : selectionMode ? "□  " : "")
-                    + (LibraryFavorites.isFavorite(HistoryActivity.this, task)
+                    + (favoriteIds.contains(task.id)
                     ? "★  " : "") + (task.title == null
                     ? tr("Untitled download", "تنزيل بلا عنوان") : task.title));
             title.setMaxLines(2);
@@ -1056,7 +1073,7 @@ public final class HistoryActivity extends Activity {
                 }
                 actions.addView(action(tr("Share", "مشاركة"), Ui.ACCENT,
                         v -> shareSaved(task)));
-                final boolean starred = LibraryFavorites.isFavorite(HistoryActivity.this, task);
+                final boolean starred = favoriteIds.contains(task.id);
                 actions.addView(action(starred ? tr("★ Saved", "★ مفضلة")
                                 : tr("☆ Favorite", "☆ المفضلة"), Ui.SECONDARY,
                         v -> toggleFavorite(task)));
@@ -1072,9 +1089,9 @@ public final class HistoryActivity extends Activity {
             wrap.setPadding(0, 0, 0, Ui.dp(HistoryActivity.this, 11));
             if (!(parent instanceof GridView)
                     && sort != null && sort.getSelectedItemPosition() == 3) {
-                final int currentSource = LibraryOrganizer.sourceOf(task);
+                final int currentSource = queryIndex.sourceOf(task);
                 final boolean firstInGroup = position == 0
-                        || LibraryOrganizer.sourceOf(items.get(position - 1)) != currentSource;
+                        || queryIndex.sourceOf(items.get(position - 1)) != currentSource;
                 if (firstInGroup) {
                     final TextView groupTitle = Ui.eyebrow(HistoryActivity.this,
                             sourceLabel(currentSource));

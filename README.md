@@ -1,3 +1,22 @@
+## NOVA 2.2.0: Library query performance and large-catalog safety
+
+- Cache normalized search metadata and four stable sort orders once per
+  Library refresh, rather than sorting and re-detecting each source while typing.
+- Read favorite membership into a read-only snapshot on refresh and after user
+  changes, avoiding thousands of individual SharedPreferences lookups during
+  rendering. Collections still require the exact saved URI alongside the task ID.
+- Debounce search edits (180 ms), while preserving the typed search preference
+  immediately on pause. Filter and sort selections remain immediate.
+- Keep the Library index read-only and preserve original download queue,
+  saved MediaStore references, imported files, collection membership and
+  candidate-duplicate rules.
+- New Robolectric tests compare indexed results against legacy filtering for
+  multiple categories/orders/sources and validate a 10,000-record fixture.
+- The tests validate behavior and memory-bounded snapshots; **not** measured
+  frame time, battery or startup latency on a real Android device. Real-device
+  performance benchmarks remain the release acceptance gate.
+- Version 2.2.0 (code 32), with signed-workflow identity verification updated.
+
 ## NOVA 2.1.0: Safer resume identity
 
 - Persist strong HTTP ETags in atomic local sidecars for new partial downloads.
