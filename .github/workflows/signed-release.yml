@@ -45,8 +45,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version_name="$(sed -n "s/^[[:space:]]*versionName[[:space:]]*['\\"]\\([^'\\"]*\\)['\\"][[:space:]]*$/\\1/p" app/build.gradle | head -n 1)"
-          version_code="$(sed -n "s/^[[:space:]]*versionCode[[:space:]]*\\([0-9][0-9]*\\)[[:space:]]*$/\\1/p" app/build.gradle | head -n 1)"
+          version_name="$(grep -E "^[[:space:]]*versionName[[:space:]]+'[^']+'" app/build.gradle | sed -E "s/.*versionName[[:space:]]+'([^']+)'.*/\\1/" | head -n 1)"
+          version_code="$(grep -E "^[[:space:]]*versionCode[[:space:]]+[0-9]+" app/build.gradle | sed -E 's/.*versionCode[[:space:]]+([0-9]+).*/\\1/' | head -n 1)"
           test -n "$version_name"
           test -n "$version_code"
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
@@ -116,7 +116,7 @@ jobs:
 
       # Create a private draft, not a public release. Publish only after the
       # exact signed APK passes the physical-device acceptance checklist.
-      - name: Create NOVA 2.3.0 draft GitHub Release
+      - name: Create NOVA draft GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.identity.outputs.version_name }}
@@ -127,7 +127,7 @@ jobs:
           generate_release_notes: false
           fail_on_unmatched_files: true
           body: |
-            ## NOVA 2.3.0
+            ## NOVA ${{ steps.identity.outputs.version_name }}
 
             Playback lifecycle and audio-focus reliability update.
 
