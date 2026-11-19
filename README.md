@@ -1,3 +1,10 @@
+## Official downloads
+
+- [GitHub Releases](https://github.com/MohammedEmad333/NOVADownloader/releases) is the official download page.
+- Public releases contain a production-signed APK, SHA-256 checksum, signing-certificate fingerprint, version details and release notes.
+- Debug APKs and unsigned APKs are for testing only. They are not official releases.
+- A release is published only after the signed APK passes the physical-device acceptance checklist in [docs/RELEASE_2_3_0.md](docs/RELEASE_2_3_0.md).
+
 ## NOVA 2.3.0: playback lifecycle and audio-focus reliability
 
 - Model audio focus as explicit transitions: transient focus loss pauses playback
