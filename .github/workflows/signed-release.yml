@@ -2,16 +2,22 @@ name: Signed release APK (manual)
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build APK"]
+    types: [completed]
+    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   signed-release:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: actions/setup-java@v5
         with:
@@ -34,8 +40,22 @@ jobs:
       - name: Verify tests and build unsigned release
         run: gradle testDebugUnitTest assembleRelease --no-daemon --stacktrace
 
+      - name: Read release identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_name="$(grep -E "^[[:space:]]*versionName[[:space:]]+'[^']+'" app/build.gradle | sed -E "s/.*versionName[[:space:]]+'([^']+)'.*/\\1/" | head -n 1)"
+          version_code="$(grep -E "^[[:space:]]*versionCode[[:space:]]+[0-9]+" app/build.gradle | sed -E 's/.*versionCode[[:space:]]+([0-9]+).*/\\1/' | head -n 1)"
+          test -n "$version_name"
+          test -n "$version_code"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+
       - name: Sign and verify APK
         env:
+          NOVA_VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          NOVA_VERSION_CODE: ${{ steps.identity.outputs.version_code }}
           NOVA_KEYSTORE_BASE64: ${{ secrets.NOVA_KEYSTORE_BASE64 }}
           NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
           NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
@@ -75,7 +95,7 @@ jobs:
           signed="app/build/outputs/apk/release/nova-release-signed.apk"
           "$signer" verify --verbose --min-sdk-version 29 "$signed"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$signed")"
-          grep -F "package: name='com.example.ytdl' versionCode='33' versionName='2.3.0'" <<< "$badging"
+          grep -F "package: name='com.example.ytdl' versionCode='$NOVA_VERSION_CODE' versionName='$NOVA_VERSION_NAME'" <<< "$badging"
           # The public certificate fingerprint lets maintainers detect accidental
           # signing-key rotation without exposing the keystore or passwords.
           "$signer" verify --print-certs "$signed" |
@@ -93,3 +113,39 @@ jobs:
             app/build/outputs/apk/release/SHA256SUMS.txt
             app/build/outputs/apk/release/SIGNING_CERT_SHA256.txt
           if-no-files-found: error
+
+      # Create a private draft, not a public release. Publish only after the
+      # exact signed APK passes the physical-device acceptance checklist.
+      - name: Create NOVA draft GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.identity.outputs.version_name }}
+          target_commitish: ${{ github.event.workflow_run.head_sha || github.sha }}
+          name: NOVA Downloader ${{ steps.identity.outputs.version_name }}
+          draft: true
+          prerelease: true
+          generate_release_notes: false
+          fail_on_unmatched_files: true
+          body: |
+            ## NOVA ${{ steps.identity.outputs.version_name }}
+
+            Playback lifecycle and audio-focus reliability update.
+
+            - Explicit audio-focus transitions. Resume only after a transient interruption that began while audio was playing.
+            - Permanent focus loss, explicit pause, and headset removal clear automatic-resume intent.
+            - Audio-focus gain resumes with the granted focus, without a redundant focus request.
+            - Video playback preserves its actual playing/paused state across Activity recreation.
+            - Playback remains limited to completed, trusted local MediaStore files.
+
+            ### Verification
+            - Android unit/Robolectric tests and debug/unsigned release builds passed in GitHub Actions.
+            - APK package: com.example.ytdl
+            - Version: ${{ steps.identity.outputs.version_name }} (versionCode ${{ steps.identity.outputs.version_code }})
+            - Minimum Android: 10 (API 29)
+
+            ### Before public publication
+            This release is intentionally a draft. Install and test this exact signed APK on supported physical devices, verify the signing certificate matches the trusted existing key, and complete the checklist in docs/RELEASE_2_3_0.md before publishing.
+          files: |
+            app/build/outputs/apk/release/nova-release-signed.apk
+            app/build/outputs/apk/release/SHA256SUMS.txt
+            app/build/outputs/apk/release/SIGNING_CERT_SHA256.txt
