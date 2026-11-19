@@ -33,8 +33,8 @@ import java.util.Locale;
  */
 public final class LocalMediaPlayerActivity extends Activity {
     static final String EXTRA_TASK_ID = "nova_player_task_id";
-    private static final String POSITION = "video_position";
-    private static final String WAS_PLAYING = "video_was_playing";
+    static final String STATE_POSITION = "video_position";
+    static final String STATE_WAS_PLAYING = "video_was_playing";
     private static final String PROGRESS_PREFS = "nova_offline_playback_positions";
     private static final String PROGRESS_PREFIX = "media-";
     private static final int MIN_RESUME_MS = 5_000;
@@ -140,6 +140,11 @@ public final class LocalMediaPlayerActivity extends Activity {
         return Math.max(0, Math.min(Math.max(0, durationMs), desiredMs));
     }
 
+    static void writePlaybackState(Bundle saved, int currentPosition, boolean currentlyPlaying) {
+        saved.putInt(STATE_POSITION, Math.max(0, currentPosition));
+        saved.putBoolean(STATE_WAS_PLAYING, currentlyPlaying);
+    }
+
     static int skipTarget(int currentMs, int durationMs, int deltaMs) {
         final long target = (long) Math.max(0, currentMs) + deltaMs;
         return (int) Math.max(0L, Math.min(Math.max(0, durationMs), target));
@@ -186,8 +191,8 @@ public final class LocalMediaPlayerActivity extends Activity {
         }
         speedIndex = PlaybackSpeed.load(this);
         if (savedInstanceState != null) {
-            position = Math.max(0, savedInstanceState.getInt(POSITION, 0));
-            playWhenReady = savedInstanceState.getBoolean(WAS_PLAYING, false);
+            position = Math.max(0, savedInstanceState.getInt(STATE_POSITION, 0));
+            playWhenReady = savedInstanceState.getBoolean(STATE_WAS_PLAYING, false);
         } else {
             position = savedPosition(this, task);
         }
@@ -539,14 +544,14 @@ public final class LocalMediaPlayerActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle saved) {
         if (videoView != null && prepared) {
             position = videoView.getCurrentPosition();
-            if (videoView.isPlaying()) playWhenReady = true;
+            // Capture false too: a paused video must stay paused after recreation.
+            playWhenReady = videoView.isPlaying();
         } else if (audioService != null) {
             final AudioPlaybackService.Snapshot snap = audioService.snapshot();
             position = snap.position;
             playWhenReady = snap.playing;
         }
-        saved.putInt(POSITION, position);
-        saved.putBoolean(WAS_PLAYING, playWhenReady);
+        writePlaybackState(saved, position, playWhenReady);
         super.onSaveInstanceState(saved);
     }
 
