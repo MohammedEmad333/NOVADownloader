@@ -215,7 +215,6 @@ public final class AudioPlaybackService extends Service {
         taskUri = saved.outputUri;
         prepared = false;
         wantPlayback = autoplay;
-        resumeAfterTransientFocusLoss = false;
         startPosition = position;
         speedIndex = PlaybackSpeed.load(this);
         error = null;
@@ -307,7 +306,10 @@ public final class AudioPlaybackService extends Service {
 
     private void pausePlayback(boolean userInitiated) {
         wantPlayback = false;
-        if (userInitiated) focusState.onUserPause();
+        if (userInitiated) {
+            focusState.onUserPause();
+            abandonAudioFocus();
+        }
         if (player != null && prepared) {
             try {
                 if (player.isPlaying()) player.pause();
