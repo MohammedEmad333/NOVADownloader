@@ -99,11 +99,20 @@ public final class ReleasePrivacyTest {
                 source("../.github/workflows/signed-release.yml").toPath()),
                 StandardCharsets.UTF_8);
         assertTrue(signed.contains("workflow_dispatch:"));
-        assertTrue(signed.contains("if: github.ref == 'refs/heads/main'"));
+        assertTrue(signed.contains("workflow_run:"));
+        assertTrue(signed.contains("branches: [main]"));
+        assertTrue(signed.contains("github.event.workflow_run.conclusion == 'success'"));
+        assertTrue(signed.contains("github.event.workflow_run.head_branch == 'main'"));
+        assertTrue(signed.contains("permissions:\\n  contents: write"));
+        assertTrue(signed.contains("ref: ${{ github.event.workflow_run.head_sha || github.sha }}"));
         assertTrue(signed.contains("zipalign"));
         assertTrue(signed.contains("apksigner"));
         assertTrue(signed.contains("sha256sum nova-release-signed.apk"));
-        assertTrue(signed.contains("versionCode='33' versionName='2.3.0'"));
+        assertTrue(signed.contains("NOVA_VERSION_CODE"));
+        assertTrue(signed.contains("NOVA_VERSION_NAME"));
+        assertTrue(signed.contains("draft: true"));
+        assertTrue(signed.contains("tag_name: v${{ steps.identity.outputs.version_name }}"));
+        assertTrue(signed.contains("nova-release-signed.apk"));
         assertTrue(signed.contains("SIGNING_CERT_SHA256.txt"));
         assertTrue(signed.contains("Signer #1 certificate SHA-256 digest:"));
         for (String key : new String[]{"NOVA_KEYSTORE_BASE64",
