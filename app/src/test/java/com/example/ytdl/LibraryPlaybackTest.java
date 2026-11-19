@@ -3,6 +3,7 @@ package com.example.ytdl;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -85,6 +86,21 @@ public final class LibraryPlaybackTest {
         assertEquals("0:09", LocalMediaPlayerActivity.formatTime(9_900));
         assertEquals("1:05", LocalMediaPlayerActivity.formatTime(65_000));
         assertEquals("1:01:01", LocalMediaPlayerActivity.formatTime(3_661_000));
+    }
+
+    @Test public void savedPlaybackStatePreservesPausedAndPlayingVideoState() {
+        final Bundle paused = new Bundle();
+        LocalMediaPlayerActivity.writePlaybackState(paused, 12_000, false);
+        assertEquals(12_000, paused.getInt(LocalMediaPlayerActivity.STATE_POSITION));
+        assertFalse(paused.getBoolean(LocalMediaPlayerActivity.STATE_WAS_PLAYING));
+
+        final Bundle playing = new Bundle();
+        LocalMediaPlayerActivity.writePlaybackState(playing, 18_000, true);
+        assertEquals(18_000, playing.getInt(LocalMediaPlayerActivity.STATE_POSITION));
+        assertTrue(playing.getBoolean(LocalMediaPlayerActivity.STATE_WAS_PLAYING));
+
+        LocalMediaPlayerActivity.writePlaybackState(paused, -500, false);
+        assertEquals(0, paused.getInt(LocalMediaPlayerActivity.STATE_POSITION));
     }
 
     @Test public void videoSeekIsClampedToLocalDuration() {
