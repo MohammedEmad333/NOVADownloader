@@ -2,16 +2,22 @@ name: Signed release APK (manual)
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build APK"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   signed-release:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: actions/setup-java@v5
         with:
@@ -34,8 +40,22 @@ jobs:
       - name: Verify tests and build unsigned release
         run: gradle testDebugUnitTest assembleRelease --no-daemon --stacktrace
 
+      - name: Read release identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_name="$(sed -n "s/^[[:space:]]*versionName[[:space:]]*['\\"]\\([^'\\"]*\\)['\\"][[:space:]]*$/\\1/p" app/build.gradle | head -n 1)"
+          version_code="$(sed -n "s/^[[:space:]]*versionCode[[:space:]]*\\([0-9][0-9]*\\)[[:space:]]*$/\\1/p" app/build.gradle | head -n 1)"
+          test -n "$version_name"
+          test -n "$version_code"
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+
       - name: Sign and verify APK
         env:
+          NOVA_VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          NOVA_VERSION_CODE: ${{ steps.identity.outputs.version_code }}
           NOVA_KEYSTORE_BASE64: ${{ secrets.NOVA_KEYSTORE_BASE64 }}
           NOVA_KEYSTORE_PASSWORD: ${{ secrets.NOVA_KEYSTORE_PASSWORD }}
           NOVA_KEY_ALIAS: ${{ secrets.NOVA_KEY_ALIAS }}
@@ -75,7 +95,7 @@ jobs:
           signed="app/build/outputs/apk/release/nova-release-signed.apk"
           "$signer" verify --verbose --min-sdk-version 29 "$signed"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$signed")"
-          grep -F "package: name='com.example.ytdl' versionCode='33' versionName='2.3.0'" <<< "$badging"
+          grep -F "package: name='com.example.ytdl' versionCode='$NOVA_VERSION_CODE' versionName='$NOVA_VERSION_NAME'" <<< "$badging"
           # The public certificate fingerprint lets maintainers detect accidental
           # signing-key rotation without exposing the keystore or passwords.
           "$signer" verify --print-certs "$signed" |
@@ -99,9 +119,9 @@ jobs:
       - name: Create NOVA 2.3.0 draft GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.3.0
-          target_commitish: main
-          name: NOVA Downloader 2.3.0
+          tag_name: v${{ steps.identity.outputs.version_name }}
+          target_commitish: ${{ github.event.workflow_run.head_sha || github.sha }}
+          name: NOVA Downloader ${{ steps.identity.outputs.version_name }}
           draft: true
           prerelease: true
           generate_release_notes: false
@@ -120,7 +140,7 @@ jobs:
             ### Verification
             - Android unit/Robolectric tests and debug/unsigned release builds passed in GitHub Actions.
             - APK package: com.example.ytdl
-            - Version: 2.3.0 (versionCode 33)
+            - Version: ${{ steps.identity.outputs.version_name }} (versionCode ${{ steps.identity.outputs.version_code }})
             - Minimum Android: 10 (API 29)
 
             ### Before public publication
