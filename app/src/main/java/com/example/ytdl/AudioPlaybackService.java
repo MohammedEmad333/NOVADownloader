@@ -73,30 +73,25 @@ public final class AudioPlaybackService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private AudioManager audioManager;
     private AudioFocusRequest focusRequest;
+    private final PlaybackFocusState focusState = new PlaybackFocusState();
     private MediaPlayer player;
     private DownloadService.Task task;
     private String taskUri;
     private boolean prepared;
     private boolean wantPlayback;
     private boolean foregroundStarted;
-    private boolean resumeAfterTransientFocusLoss;
     private int startPosition;
     private int speedIndex = PlaybackSpeed.DEFAULT;
     private String error;
 
     private final AudioManager.OnAudioFocusChangeListener focusListener = change -> {
-        if (change == AudioManager.AUDIOFOCUS_GAIN) {
-            if (resumeAfterTransientFocusLoss) {
-                resumeAfterTransientFocusLoss = false;
-                setPlaying(true);
-            }
-        } else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
-                || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
-            resumeAfterTransientFocusLoss = isPlaying();
+        final PlaybackFocusState.Action action = focusState.onFocusChange(change, isPlaying());
+        if (action == PlaybackFocusState.Action.RESUME) {
+            // AUDIOFOCUS_GAIN already grants focus; do not issue a second request.
+            startWithGrantedFocus();
+        } else if (action == PlaybackFocusState.Action.PAUSE) {
             pausePlayback(false);
-        } else if (change == AudioManager.AUDIOFOCUS_LOSS) {
-            resumeAfterTransientFocusLoss = false;
-            pausePlayback(false);
+            if (change == AudioManager.AUDIOFOCUS_LOSS) abandonAudioFocus();
         }
     };
 
@@ -104,8 +99,9 @@ public final class AudioPlaybackService extends Service {
         @Override public void onReceive(Context context, Intent intent) {
             if (intent != null && AudioManager.ACTION_AUDIO_BECOMING_NOISY
                     .equals(intent.getAction())) {
-                resumeAfterTransientFocusLoss = false;
+                focusState.clear();
                 pausePlayback(false);
+                abandonAudioFocus();
             }
         }
     };
@@ -219,7 +215,6 @@ public final class AudioPlaybackService extends Service {
         taskUri = saved.outputUri;
         prepared = false;
         wantPlayback = autoplay;
-        resumeAfterTransientFocusLoss = false;
         startPosition = position;
         speedIndex = PlaybackSpeed.load(this);
         error = null;
@@ -248,10 +243,11 @@ public final class AudioPlaybackService extends Service {
             });
             player.setOnCompletionListener(done -> {
                 wantPlayback = false;
-                resumeAfterTransientFocusLoss = false;
+                focusState.clear();
                 startPosition = 0;
                 LocalMediaPlayerActivity.rememberPosition(this, task, 0, 0);
                 handler.removeCallbacks(persistWhilePlaying);
+                abandonAudioFocus();
                 updateNotification();
             });
             player.setOnErrorListener((failed, what, extra) -> {
@@ -266,29 +262,42 @@ public final class AudioPlaybackService extends Service {
 
     void setPlaying(boolean play) {
         wantPlayback = play;
+        if (!play) {
+            pausePlayback(true);
+            return;
+        }
+        focusState.clear();
         if (!prepared || player == null) {
             updateNotification();
             return;
         }
         try {
-            if (play) {
-                if (audioManager == null || focusRequest == null
-                        || audioManager.requestAudioFocus(focusRequest)
-                        != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-                    wantPlayback = false;
-                    error = "Audio focus unavailable";
-                    updateNotification();
-                    return;
-                }
-                if (!player.isPlaying()) player.start();
-                applySpeed();
-                error = null;
-                handler.removeCallbacks(persistWhilePlaying);
-                handler.postDelayed(persistWhilePlaying, 10_000);
-            } else {
-                pausePlayback(true);
+            if (audioManager == null || focusRequest == null
+                    || audioManager.requestAudioFocus(focusRequest)
+                    != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                wantPlayback = false;
+                error = "Audio focus unavailable";
+                updateNotification();
                 return;
             }
+            startWithGrantedFocus();
+        } catch (IllegalStateException failed) {
+            playbackError();
+        }
+    }
+
+    private void startWithGrantedFocus() {
+        if (!prepared || player == null) {
+            updateNotification();
+            return;
+        }
+        try {
+            if (!player.isPlaying()) player.start();
+            wantPlayback = true;
+            applySpeed();
+            error = null;
+            handler.removeCallbacks(persistWhilePlaying);
+            handler.postDelayed(persistWhilePlaying, 10_000);
             updateNotification();
         } catch (IllegalStateException failed) {
             playbackError();
@@ -297,7 +306,10 @@ public final class AudioPlaybackService extends Service {
 
     private void pausePlayback(boolean userInitiated) {
         wantPlayback = false;
-        if (userInitiated) resumeAfterTransientFocusLoss = false;
+        if (userInitiated) {
+            focusState.onUserPause();
+            abandonAudioFocus();
+        }
         if (player != null && prepared) {
             try {
                 if (player.isPlaying()) player.pause();
@@ -361,6 +373,11 @@ public final class AudioPlaybackService extends Service {
             player = null;
         }
         prepared = false;
+        focusState.clear();
+        abandonAudioFocus();
+    }
+
+    private void abandonAudioFocus() {
         if (audioManager != null && focusRequest != null) {
             audioManager.abandonAudioFocusRequest(focusRequest);
         }

@@ -1,3 +1,19 @@
+## NOVA 2.3.0: playback lifecycle and audio-focus reliability
+
+- Model audio focus as explicit transitions: transient focus loss pauses playback
+  and resumes only when playback was active before the interruption; permanent
+  loss and headset removal clear the automatic-resume intent.
+- Resume after an audio-focus gain using the granted focus callback instead of
+  issuing a redundant second focus request.
+- Save the exact video playing/paused state during Activity recreation, so a
+  video the user paused does not unexpectedly start again after rotation.
+- Add Robolectric regression coverage for focus transitions and saved playback
+  state. Keep playback restricted to completed, trusted local MediaStore files.
+- Keep the current Android MediaPlayer implementation. A Media3 migration stays
+  conditional on measured device benchmarks and compatibility testing.
+- Version 2.3.0 (code 33). Android 10–16 audio-focus, headset, PiP and rotation
+  acceptance still requires physical-device testing.
+
 ## NOVA 2.2.0: Library query performance and large-catalog safety
 
 - Cache normalized search metadata and four stable sort orders once per

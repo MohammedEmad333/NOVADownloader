@@ -75,7 +75,7 @@ jobs:
           signed="app/build/outputs/apk/release/nova-release-signed.apk"
           "$signer" verify --verbose --min-sdk-version 29 "$signed"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$signed")"
-          grep -F "package: name='com.example.ytdl' versionCode='32' versionName='2.2.0'" <<< "$badging"
+          grep -F "package: name='com.example.ytdl' versionCode='33' versionName='2.3.0'" <<< "$badging"
           # The public certificate fingerprint lets maintainers detect accidental
           # signing-key rotation without exposing the keystore or passwords.
           "$signer" verify --print-certs "$signed" |

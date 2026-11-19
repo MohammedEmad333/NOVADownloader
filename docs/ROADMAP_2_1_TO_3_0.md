@@ -1,6 +1,6 @@
 # NOVA Downloader: Roadmap 2.0.1 → 3.0.0
 
-Status: **proposed development roadmap**, not a list of implemented features.  
+Status: **active development roadmap**; individual implemented slices are recorded in release notes, while device-only acceptance remains explicit.  
 Baseline: NOVA 2.0.0, `main` at `07bfa3ba6f54f77d2032868a3dbcbe27fd5f2cb6`.  
 Last reviewed: 2026-11-17.  
 Scope: native Android/Java, minSdk 29, targetSdk 36, same app ID `com.example.ytdl`.
@@ -61,10 +61,18 @@ Automated regression validation does **not** replace the Android 15/16 physical-
 
 **Goal:** Consistent offline playback across orientation, interruptions and background transitions.
 
+**Implemented hardening slice (2.3.0):**
+- Model transient/permanent audio-focus changes explicitly. Resume only after a transient interruption that began while playback was active; do not resume after permanent focus loss or headset removal.
+- Treat the AUDIOFOCUS_GAIN callback as the grant and resume without issuing a second focus request.
+- Persist the actual video playing/paused state when saving Activity state, including an explicit paused value.
+- Add Robolectric regression tests for focus transitions and saved playback state.
+
+**Still conditional / not claimed as complete:**
 - Prototype Media3/ExoPlayer + MediaSession for audio and video, compare APK size, latency, energy and feature compatibility against existing MediaPlayer implementation.
-- Improve audio focus, headset unplug, lock-screen controls, orientation and PiP handoffs. Maintain position, playback speed and local-only playback.
+- Improve lock-screen controls, orientation and PiP handoffs after physical-device review. Maintain position, playback speed and local-only playback.
 - Only migrate if regression tests and device QA justify the change; otherwise strengthen current player.
-- **Acceptance:** no unwanted audio overlap; pause/stop/focus controls behave correctly; reliable return from PiP, playlist handoff and notification behavior.
+
+- **Acceptance:** no unwanted audio overlap; pause/stop/focus controls behave correctly; reliable return from PiP, playlist handoff and notification behavior. Android 10–16 physical-device checks remain outstanding.
 
 ### 2.4.0 — Bilingual UX and accessibility (P1)
 
