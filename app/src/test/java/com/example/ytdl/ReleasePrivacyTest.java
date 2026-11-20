@@ -106,7 +106,7 @@ public final class ReleasePrivacyTest {
         assertTrue(signed.contains("github.event.workflow_run.conclusion == 'success'"));
         assertTrue(signed.contains("github.event.workflow_run.head_branch == 'main'"));
         assertTrue(signed.contains("github.event.workflow_run.head_sha || github.sha"));
-        assertTrue(signed.contains("permissions:\\n  contents: write"));
+        assertTrue(signed.contains("permissions:\n  contents: write"));
         assertTrue(signed.contains("zipalign"));
         assertTrue(signed.contains("apksigner"));
         assertTrue(signed.contains("sha256sum nova-release-signed.apk"));
