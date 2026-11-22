@@ -15,8 +15,6 @@ import android.widget.AdapterView;
 
 /** Offline, on-device preferences for NOVA. All settings are reversible. */
 public final class SettingsActivity extends Activity {
-    private boolean firstLayout = true;
-
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Ui.applyChrome(this);
@@ -177,36 +175,52 @@ public final class SettingsActivity extends Activity {
         start.setEnabled(daily.isChecked());
         end.setEnabled(daily.isChecked());
 
-        final Runnable saveSchedule = () -> {
-            final boolean enabled = daily.isChecked();
-            final int from = start.getSelectedItemPosition() * 60;
-            final int to = end.getSelectedItemPosition() * 60;
-            if (enabled && from == to) {
+        // Spinner initialization can dispatch selection callbacks. Never persist
+        // a schedule merely because Settings was opened or the user browsed hours.
+        daily.setOnCheckedChangeListener((button, enabled) -> {
+            start.setEnabled(enabled);
+            end.setEnabled(enabled);
+        });
+        final TextView savedSchedule = Ui.sans(this, 13, Ui.TEXT);
+        savedSchedule.setText(scheduleSummary());
+        savedSchedule.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        final LinearLayout.LayoutParams savedParams = new LinearLayout.LayoutParams(-1, -2);
+        savedParams.topMargin = Ui.dp(this, 12);
+        root.addView(savedSchedule, savedParams);
+
+        final android.widget.Button applySchedule = Ui.button(this,
+                text("Save download schedule", "حفظ جدول التنزيلات"), false);
+        applySchedule.setMinHeight(Ui.dp(this, 52));
+        final LinearLayout.LayoutParams applyParams = new LinearLayout.LayoutParams(-1, -2);
+        applyParams.topMargin = Ui.dp(this, 10);
+        root.addView(applySchedule, applyParams);
+        applySchedule.setOnClickListener(v -> {
+            final int startHour = start.getSelectedItemPosition();
+            final int endHour = end.getSelectedItemPosition();
+            if (startHour < 0 || endHour < 0) return;
+            final int from = selectedMinute(startHour, DownloadSchedule.windowStart(this));
+            final int to = selectedMinute(endHour, DownloadSchedule.windowEnd(this));
+            if (daily.isChecked() && from == to) {
                 android.widget.Toast.makeText(this,
                         text("Choose different start and end hours.",
                                 "اختر ساعة بداية ونهاية مختلفتين."),
                         android.widget.Toast.LENGTH_SHORT).show();
-                // Keep the previously saved valid schedule.
                 return;
             }
-            DownloadSchedule.setWindow(this, enabled, from, to);
-        };
-        final AdapterView.OnItemSelectedListener timeChanged = new Selected() {
-            @Override public void selected(int position) { saveSchedule.run(); }
-        };
-        start.setOnItemSelectedListener(timeChanged);
-        end.setOnItemSelectedListener(timeChanged);
-        daily.setOnCheckedChangeListener((button, enabled) -> {
-            start.setEnabled(enabled);
-            end.setEnabled(enabled);
-            saveSchedule.run();
+            DownloadSchedule.setWindow(this, daily.isChecked(), from, to);
+            savedSchedule.setText(scheduleSummary());
+            android.widget.Toast.makeText(this,
+                    text("Download schedule saved.", "تم حفظ جدول التنزيلات."),
+                    android.widget.Toast.LENGTH_SHORT).show();
         });
         final TextView scheduleNote = Ui.sans(this, 12, Ui.MUTED);
         scheduleNote.setText(text(
-                "Choose start and end hours (device local time). The end may be next day. "
-                        + "Android may delay reminders: open NOVA when notified to start queued transfers.",
-                "اختر ساعة البداية والنهاية حسب توقيت الجهاز. يمكن أن تمتد الفترة لليوم التالي. "
-                        + "قد يؤخر Android التذكير؛ افتح NOVA عند الإشعار لبدء المهام المنتظرة."));
+                "Select hours, then tap Save download schedule to apply changes. "
+                        + "Existing minute precision is retained if the hour stays the same. "
+                        + "The end may be next day. Android can delay scheduled reminders.",
+                "اختر الساعات ثم اضغط حفظ جدول التنزيلات لتطبيق التغييرات. "
+                        + "تُحفظ الدقائق السابقة إذا بقيت الساعة نفسها. "
+                        + "يمكن أن تمتد الفترة لليوم التالي وقد يؤخر Android التذكيرات."));
         scheduleNote.setPadding(0, Ui.dp(this, 8), 0, 0);
         root.addView(scheduleNote);
 
@@ -217,7 +231,8 @@ public final class SettingsActivity extends Activity {
                 text("Open Storage & Recovery", "فتح التخزين والاستعادة"), false);
         storage.setOnClickListener(v -> startActivity(
                 new android.content.Intent(this, StorageActivity.class)));
-        root.addView(storage, new LinearLayout.LayoutParams(-1, Ui.dp(this, 54)));
+        storage.setMinHeight(Ui.dp(this, 54));
+        root.addView(storage, new LinearLayout.LayoutParams(-1, -2));
 
         final TextView note = Ui.sans(this, 12, Ui.MUTED);
         note.setText(text("Default qualities affect the order of offered formats, not "
@@ -227,6 +242,23 @@ public final class SettingsActivity extends Activity {
         note.setPadding(0, Ui.dp(this, 22), 0, 0);
         root.addView(note);
         setContentView(scroll);
+    }
+
+    /** Preserve old minute precision when reopening the hourly settings picker. */
+    static int selectedMinute(int selectedHour, int savedMinute) {
+        if (selectedHour < 0 || selectedHour > 23) {
+            throw new IllegalArgumentException("Invalid hour");
+        }
+        return DownloadSchedule.validMinute(savedMinute)
+                && savedMinute / 60 == selectedHour ? savedMinute : selectedHour * 60;
+    }
+
+    private String scheduleSummary() {
+        final boolean enabled = DownloadSchedule.windowEnabled(this);
+        return text("Saved schedule: ", "الجدولة المحفوظة: ")
+                + (enabled ? text("On", "مفعلة") : text("Off", "معطلة"))
+                + " · " + DownloadSchedule.clockLabel(DownloadSchedule.windowStart(this))
+                + " – " + DownloadSchedule.clockLabel(DownloadSchedule.windowEnd(this));
     }
 
     private TextView addLabel(LinearLayout root, String title, String detail) {
