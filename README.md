@@ -9,8 +9,11 @@
 
 - Settings language, video-quality and MP3-quality spinners now have explicit
   accessibility-linked labels in Arabic and English.
-- Download schedule start/end hours have separate visible labels and remain
-  user-controlled without resetting the existing saved schedule.
+- Download schedule start/end hours have separate visible labels and an explicit
+  Save action; browsing hours, reopening Settings or toggling an unsaved choice
+  cannot silently overwrite the persisted download window.
+- Existing saved minute precision is retained when a selected hour is unchanged;
+  a changed hour is saved as HH:00 after the user confirms.
 - Settings and Storage & Recovery action rows now accommodate larger system
   font sizes without forcing clipped 50–54 dp content heights.
 - Shared section titles are accessibility headings; bottom navigation announces
