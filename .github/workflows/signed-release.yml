@@ -45,10 +45,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version_name="$(grep -E "^[[:space:]]*versionName[[:space:]]+'[^']+'" app/build.gradle | sed -E "s/.*versionName[[:space:]]+'([^']+)'.*/\\1/" | head -n 1)"
-          version_code="$(grep -E "^[[:space:]]*versionCode[[:space:]]+[0-9]+" app/build.gradle | sed -E 's/.*versionCode[[:space:]]+([0-9]+).*/\\1/' | head -n 1)"
-          test -n "$version_name"
-          test -n "$version_code"
+          version_name="$(grep -m1 -E "^[[:space:]]*versionName[[:space:]]+'[^']+'" app/build.gradle | cut -d "'" -f 2)"
+          version_code="$(awk '$1 == "versionCode" { print $2; exit }' app/build.gradle)"
+          [[ "$version_name" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]
+          [[ "$version_code" =~ ^[0-9]+$ ]]
+          echo "Validated version: $version_name ($version_code)"
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
 
@@ -95,7 +96,14 @@ jobs:
           signed="app/build/outputs/apk/release/nova-release-signed.apk"
           "$signer" verify --verbose --min-sdk-version 29 "$signed"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$signed")"
-          grep -F "package: name='com.example.ytdl' versionCode='$NOVA_VERSION_CODE' versionName='$NOVA_VERSION_NAME'" <<< "$badging"
+          package_line="$(grep -m1 '^package: ' <<< "$badging")"
+          for token in "name='com.example.ytdl'" "versionCode='$NOVA_VERSION_CODE'" "versionName='$NOVA_VERSION_NAME'"; do
+            if [[ "$package_line" != *"$token"* ]]; then
+              echo "Signed APK identity mismatch: $package_line" >&2
+              exit 1
+            fi
+          done
+          echo "$package_line"
           # The public certificate fingerprint lets maintainers detect accidental
           # signing-key rotation without exposing the keystore or passwords.
           "$signer" verify --print-certs "$signed" |
@@ -116,7 +124,23 @@ jobs:
 
       # Create a private draft, not a public release. Publish only after the
       # exact signed APK passes the physical-device acceptance checklist.
+      - name: Check existing release state
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.identity.outputs.version_name }}"
+          status="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || echo missing)"
+          if [[ "$status" == false ]]; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create NOVA draft GitHub Release
+        if: steps.existing_release.outputs.already_published != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.identity.outputs.version_name }}
@@ -143,9 +167,20 @@ jobs:
             - Version: ${{ steps.identity.outputs.version_name }} (versionCode ${{ steps.identity.outputs.version_code }})
             - Minimum Android: 10 (API 29)
 
-            ### Before public publication
-            This release is intentionally a draft. Install and test this exact signed APK on supported physical devices, verify the signing certificate matches the trusted existing key, and complete the checklist in docs/RELEASE_2_3_0.md before publishing.
+            ### Release and verification
+            NOVA 2.3.0 is the first public release. Its build, signature, APK identity, checksum and signing-certificate fingerprint are verified by GitHub Actions.
+            The maintainer confirmed physical-device APK testing. Keep the release keystore secure for all future upgrades.
+            Later versions remain drafts until the signed APK passes the release checklist.
           files: |
             app/build/outputs/apk/release/nova-release-signed.apk
             app/build/outputs/apk/release/SHA256SUMS.txt
             app/build/outputs/apk/release/SIGNING_CERT_SHA256.txt
+
+      # Only the initial release is auto-published after successful signing.
+      # Later releases stay drafts for device acceptance.
+      - name: Publish NOVA 2.3.0 first public release
+        if: steps.identity.outputs.version_name == '2.3.0' && steps.existing_release.outputs.already_published != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh release edit "v2.3.0" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=false
