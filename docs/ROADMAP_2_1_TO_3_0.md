@@ -80,6 +80,9 @@ Automated regression validation does **not** replace the Android 15/16 physical-
 
 **Implemented first slice (development, not yet published):**
 - Linked accessible labels to language, format-quality and daily schedule hour selectors.
+- Made download-window edits explicit with a Save action, preventing Spinner
+  initialization or unsaved schedule changes from overwriting persisted time
+  windows; existing nonzero minute precision is retained for unchanged hours.
 - Allowed navigation/settings/storage controls to expand when font sizes grow.
 - Marked shared section headings, announced selected navigation state in both
   languages and made storage scan results polite accessibility live regions.
