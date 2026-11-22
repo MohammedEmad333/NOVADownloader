@@ -5,6 +5,22 @@
 - Debug APKs and unsigned APKs are for testing only. They are not official releases.
 - A release is published only after the signed APK passes the physical-device acceptance checklist in [docs/RELEASE_2_3_0.md](docs/RELEASE_2_3_0.md).
 
+## NOVA 2.4.0 development: bilingual accessibility
+
+- Settings language, video-quality and MP3-quality spinners now have explicit
+  accessibility-linked labels in Arabic and English.
+- Download schedule start/end hours have separate visible labels and remain
+  user-controlled without resetting the existing saved schedule.
+- Settings and Storage & Recovery action rows now accommodate larger system
+  font sizes without forcing clipped 50–54 dp content heights.
+- Shared section titles are accessibility headings; bottom navigation announces
+  selected state in Arabic and English, honors RTL order, and expands vertically
+  when text scales. Storage scan results use polite screen-reader updates.
+- Robolectric tests cover bilingual controls, screen-reader semantics and
+  adaptive navigation. The changes do not touch saved downloads or queue data.
+- Version 2.4.0 (code 34) is a **development iteration**. Device screen-reader,
+  large-text and RTL QA is required before a public 2.4.0 release.
+
 ## NOVA 2.3.0: playback lifecycle and audio-focus reliability
 
 - Model audio focus as explicit transitions: transient focus loss pauses playback
