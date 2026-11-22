@@ -42,6 +42,8 @@ public final class SettingsActivity extends Activity {
         final TextView back = Ui.chip(this,
                 text("←  Back", "رجوع  →"), Ui.ACCENT);
         back.setMinHeight(Ui.dp(this, 48));
+        back.setClickable(true);
+        back.setFocusable(true);
         back.setContentDescription(text("Back to downloader", "العودة إلى التطبيق"));
         back.setOnClickListener(v -> finish());
         root.addView(back);
@@ -56,13 +58,14 @@ public final class SettingsActivity extends Activity {
         headingParams.bottomMargin = Ui.dp(this, 20);
         root.addView(heading, headingParams);
 
-        addLabel(root, text("APP LANGUAGE", "لغة التطبيق"),
+        final TextView languageLabel = addLabel(root, text("APP LANGUAGE", "لغة التطبيق"),
                 text("Choose English, Arabic, or follow your phone.",
                         "اختر العربية أو الإنجليزية أو لغة جهازك."));
         final String[] languageKeys = {"system", "en", "ar"};
         final Spinner language = spinner(new String[]{
                 text("System default", "حسب لغة الجهاز"),
                 "English", "العربية"});
+        linkLabel(languageLabel, language);
         root.addView(language, row());
         language.setSelection(indexOf(languageKeys, NovaPreferences.languageChoice(this)));
         language.setOnItemSelectedListener(new Selected() {
@@ -75,12 +78,13 @@ public final class SettingsActivity extends Activity {
             }
         });
 
-        addLabel(root, text("PREFERRED VIDEO QUALITY", "جودة الفيديو المفضلة"),
+        final TextView videoLabel = addLabel(root, text("PREFERRED VIDEO QUALITY", "جودة الفيديو المفضلة"),
                 text("Matching video formats appear first when available.",
                         "تظهر الجودة المناسبة أولاً إن كانت متاحة."));
         final int[] qualityValues = {360, 480, 720, 1080, 2160};
         final Spinner quality = spinner(new String[]{
                 "360p", "480p", "720p", "1080p", "2160p"});
+        linkLabel(videoLabel, quality);
         root.addView(quality, row());
         quality.setSelection(indexOf(qualityValues, NovaPreferences.videoHeight(this)));
         quality.setOnItemSelectedListener(new Selected() {
@@ -89,11 +93,12 @@ public final class SettingsActivity extends Activity {
             }
         });
 
-        addLabel(root, text("PREFERRED MP3 QUALITY", "جودة MP3 المفضلة"),
+        final TextView mp3Label = addLabel(root, text("PREFERRED MP3 QUALITY", "جودة MP3 المفضلة"),
                 text("Available MP3 formats will show your preference first.",
                         "ستظهر جودة MP3 المفضلة أولاً."));
         final int[] mp3Values = {128, 192, 320};
         final Spinner mp3 = spinner(new String[]{"128 kbps", "192 kbps", "320 kbps"});
+        linkLabel(mp3Label, mp3);
         root.addView(mp3, row());
         mp3.setSelection(indexOf(mp3Values, NovaPreferences.mp3Bitrate(this)));
         mp3.setOnItemSelectedListener(new Selected() {
@@ -143,17 +148,31 @@ public final class SettingsActivity extends Activity {
         }
         final Spinner start = spinner(hours);
         final Spinner end = spinner(hours);
+        start.setId(View.generateViewId());
+        end.setId(View.generateViewId());
         start.setSelection(DownloadSchedule.windowStart(this) / 60);
         end.setSelection(DownloadSchedule.windowEnd(this) / 60);
         final LinearLayout times = new LinearLayout(this);
         times.setOrientation(LinearLayout.HORIZONTAL);
-        final LinearLayout.LayoutParams fromParams =
-                new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f);
+        final LinearLayout startColumn = new LinearLayout(this);
+        startColumn.setOrientation(LinearLayout.VERTICAL);
+        final TextView startLabel = Ui.sans(this, 13, Ui.TEXT);
+        startLabel.setText(text("Start hour", "ساعة البداية"));
+        startLabel.setLabelFor(start.getId());
+        startColumn.addView(startLabel);
+        startColumn.addView(start, row());
+        times.addView(startColumn, new LinearLayout.LayoutParams(0, -2, 1f));
+        final LinearLayout endColumn = new LinearLayout(this);
+        endColumn.setOrientation(LinearLayout.VERTICAL);
+        final TextView endLabel = Ui.sans(this, 13, Ui.TEXT);
+        endLabel.setText(text("End hour", "ساعة النهاية"));
+        endLabel.setLabelFor(end.getId());
+        endColumn.addView(endLabel);
+        endColumn.addView(end, row());
         final LinearLayout.LayoutParams toParams =
-                new LinearLayout.LayoutParams(0, Ui.dp(this, 50), 1f);
-        toParams.leftMargin = Ui.dp(this, 8);
-        times.addView(start, fromParams);
-        times.addView(end, toParams);
+                new LinearLayout.LayoutParams(0, -2, 1f);
+        toParams.setMarginStart(Ui.dp(this, 8));
+        times.addView(endColumn, toParams);
         root.addView(times);
         start.setEnabled(daily.isChecked());
         end.setEnabled(daily.isChecked());
@@ -210,7 +229,7 @@ public final class SettingsActivity extends Activity {
         setContentView(scroll);
     }
 
-    private void addLabel(LinearLayout root, String title, String detail) {
+    private TextView addLabel(LinearLayout root, String title, String detail) {
         final TextView label = Ui.eyebrow(this, title);
         final LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.topMargin = Ui.dp(this, 19);
@@ -219,6 +238,12 @@ public final class SettingsActivity extends Activity {
         description.setText(detail);
         description.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 8));
         root.addView(description);
+        return label;
+    }
+
+    private static void linkLabel(TextView label, Spinner spinner) {
+        spinner.setId(View.generateViewId());
+        label.setLabelFor(spinner.getId());
     }
 
     private Spinner spinner(String[] labels) {
@@ -227,13 +252,13 @@ public final class SettingsActivity extends Activity {
                 new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, labels);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(adapter);
-        spinner.setMinimumHeight(Ui.dp(this, 48));
+        spinner.setMinimumHeight(Ui.dp(this, 52));
         spinner.setBackground(Ui.box(this, Ui.SURFACE_RAISED, Ui.LINE, 14));
         return spinner;
     }
 
     private LinearLayout.LayoutParams row() {
-        return new LinearLayout.LayoutParams(-1, Ui.dp(this, 50));
+        return new LinearLayout.LayoutParams(-1, -2);
     }
 
     private static int indexOf(int[] options, int value) {
