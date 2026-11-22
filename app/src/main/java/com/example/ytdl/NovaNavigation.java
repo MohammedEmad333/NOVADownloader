@@ -2,6 +2,7 @@ package com.example.ytdl;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -52,6 +53,11 @@ final class NovaNavigation {
         tab.setBackground(Ui.pressable(context, active
                 ? Ui.ACCENT : Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 17));
         tab.setSelected(active);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            tab.setStateDescription(NovaPreferences.text(context,
+                    active ? "Selected" : "Not selected",
+                    active ? "محدد" : "غير محدد"));
+        }
     }
 
     static LinearLayout bar(Context context, TextView explore, TextView transfers,
