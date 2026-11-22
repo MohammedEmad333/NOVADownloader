@@ -112,4 +112,52 @@ public final class NovaAccessibilityTest {
             NovaPreferences.setLanguage(context, previous);
         }
     }
+
+    @Test public void hourlySchedulePickerPreservesSavedMinutePrecision() {
+        assertEquals(22 * 60 + 17, SettingsActivity.selectedMinute(22, 22 * 60 + 17));
+        assertEquals(7 * 60 + 43, SettingsActivity.selectedMinute(7, 7 * 60 + 43));
+        assertEquals(21 * 60, SettingsActivity.selectedMinute(21, 22 * 60 + 17));
+        assertEquals(0, SettingsActivity.selectedMinute(0, -1));
+        try {
+            SettingsActivity.selectedMinute(24, 22 * 60);
+            fail("Expected invalid hour to be rejected");
+        } catch (IllegalArgumentException expected) {
+            // Bad spinner positions must never persist as a schedule.
+        }
+    }
+
+    @Test public void settingsDoesNotRewriteScheduleBeforeExplicitSave() {
+        final Context context = RuntimeEnvironment.getApplication();
+        final android.content.SharedPreferences prefs = context.getSharedPreferences(
+                "nova_download_schedule", Context.MODE_PRIVATE);
+        final String previous = NovaPreferences.languageChoice(context);
+        prefs.edit().putBoolean("daily_window_enabled", true)
+                .putInt("window_start_minute", 22 * 60 + 17)
+                .putInt("window_end_minute", 7 * 60 + 43).commit();
+        try {
+            NovaPreferences.setLanguage(context, "en");
+            final SettingsActivity activity = Robolectric.buildActivity(SettingsActivity.class)
+                    .create().start().resume().get();
+            final View root = activity.findViewById(android.R.id.content);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            assertNotNull(findText(root, "Save download schedule"));
+            assertNotNull(findText(root, "Saved schedule: On · 22:17 – 07:43"));
+            final TextView startLabel = findText(root, "Start hour");
+            assertNotNull(startLabel);
+            final Spinner start = (Spinner) root.findViewById(startLabel.getLabelFor());
+            start.setSelection(20);
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
+            final TextView toggleText = findText(root,
+                    "Limit downloads to a daily time window");
+            assertTrue(toggleText instanceof android.widget.CheckBox);
+            ((android.widget.CheckBox) toggleText).setChecked(false);
+            assertEquals(22 * 60 + 17, DownloadSchedule.windowStart(context));
+            assertEquals(7 * 60 + 43, DownloadSchedule.windowEnd(context));
+            assertTrue("Browsing Settings cannot silently disable a saved schedule",
+                    DownloadSchedule.windowEnabled(context));
+        } finally {
+            prefs.edit().clear().commit();
+            NovaPreferences.setLanguage(context, previous);
+        }
+    }
 }
