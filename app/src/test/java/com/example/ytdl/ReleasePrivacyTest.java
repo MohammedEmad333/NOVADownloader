@@ -112,6 +112,11 @@ public final class ReleasePrivacyTest {
         assertTrue(signed.contains("sha256sum nova-release-signed.apk"));
         assertTrue(signed.contains("NOVA_VERSION_CODE"));
         assertTrue(signed.contains("NOVA_VERSION_NAME"));
+        assertTrue(signed.contains("version_code=\"$(awk "));
+        assertTrue(signed.contains("cut -d "));
+        assertTrue(signed.contains("Signed APK identity mismatch:"));
+        assertTrue(signed.contains("already_published=true"));
+        assertTrue(signed.contains("--draft=false --prerelease=false"));
         assertTrue(signed.contains("draft: true"));
         assertTrue(signed.contains("tag_name: v${{ steps.identity.outputs.version_name }}"));
         assertTrue(signed.contains("nova-release-signed.apk"));
