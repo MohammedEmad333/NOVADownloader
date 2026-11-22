@@ -153,6 +153,7 @@ public final class Ui {
         root.addView(upper);
         final TextView heading = headline(context, 22);
         heading.setText(title);
+        heading.setAccessibilityHeading(true);
         final LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
                 -1, -2);
         hp.topMargin = dp(context, 5);
