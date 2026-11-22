@@ -153,13 +153,9 @@ jobs:
           body: |
             ## NOVA ${{ steps.identity.outputs.version_name }}
 
-            Playback lifecycle and audio-focus reliability update.
-
-            - Explicit audio-focus transitions. Resume only after a transient interruption that began while audio was playing.
-            - Permanent focus loss, explicit pause, and headset removal clear automatic-resume intent.
-            - Audio-focus gain resumes with the granted focus, without a redundant focus request.
-            - Video playback preserves its actual playing/paused state across Activity recreation.
-            - Playback remains limited to completed, trusted local MediaStore files.
+            Changes are recorded in the repository README and development roadmap.
+            This workflow does not publish new versions automatically: versions after 2.3.0
+            remain drafts until signed-APK physical-device acceptance.
 
             ### Verification
             - Android unit/Robolectric tests and debug/unsigned release builds passed in GitHub Actions.
@@ -168,9 +164,10 @@ jobs:
             - Minimum Android: 10 (API 29)
 
             ### Release and verification
-            NOVA 2.3.0 is the first public release. Its build, signature, APK identity, checksum and signing-certificate fingerprint are verified by GitHub Actions.
-            The maintainer confirmed physical-device APK testing. Keep the release keystore secure for all future upgrades.
-            Later versions remain drafts until the signed APK passes the release checklist.
+            The APK signature, package and version identity, SHA-256 and signing-certificate
+            fingerprint are checked by CI. Preserve the established NOVA signing key for upgrades.
+            The maintainer must test this signed APK on a supported Android device before
+            publishing a new version. See docs/ROADMAP_2_1_TO_3_0.md.
           files: |
             app/build/outputs/apk/release/nova-release-signed.apk
             app/build/outputs/apk/release/SHA256SUMS.txt

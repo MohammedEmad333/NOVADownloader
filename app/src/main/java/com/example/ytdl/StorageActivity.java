@@ -48,7 +48,8 @@ public final class StorageActivity extends Activity {
 
         final Button back = Ui.button(this, tr("←  Settings", "الإعدادات  →"), false);
         back.setOnClickListener(v -> finish());
-        root.addView(back, new LinearLayout.LayoutParams(-1, Ui.dp(this, 50)));
+        back.setMinHeight(Ui.dp(this, 50));
+        root.addView(back, new LinearLayout.LayoutParams(-1, -2));
 
         final LinearLayout heading = Ui.section(this,
                 tr("NOVA / STORAGE", "نوفا / التخزين"),
@@ -67,20 +68,23 @@ public final class StorageActivity extends Activity {
         report.setPadding(Ui.dp(this, 16), Ui.dp(this, 18),
                 Ui.dp(this, 16), Ui.dp(this, 18));
         report.setText(tr("Checking storage…", "جاري فحص التخزين…"));
+        report.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         root.addView(report, new LinearLayout.LayoutParams(-1, -2));
 
         refresh = Ui.button(this, tr("Refresh scan", "إعادة الفحص"), false);
         refresh.setOnClickListener(v -> inspect());
+        refresh.setMinHeight(Ui.dp(this, 52));
         final LinearLayout.LayoutParams refreshParams =
-                new LinearLayout.LayoutParams(-1, Ui.dp(this, 52));
+                new LinearLayout.LayoutParams(-1, -2);
         refreshParams.topMargin = Ui.dp(this, 16);
         root.addView(refresh, refreshParams);
 
         cleanup = Ui.button(this, tr("Clean old temporary files", "تنظيف الملفات المؤقتة القديمة"), true);
         cleanup.setEnabled(false);
         cleanup.setOnClickListener(v -> confirmCleanup());
+        cleanup.setMinHeight(Ui.dp(this, 54));
         final LinearLayout.LayoutParams cleanParams =
-                new LinearLayout.LayoutParams(-1, Ui.dp(this, 54));
+                new LinearLayout.LayoutParams(-1, -2);
         cleanParams.topMargin = Ui.dp(this, 10);
         root.addView(cleanup, cleanParams);
 
@@ -96,6 +100,7 @@ public final class StorageActivity extends Activity {
 
         pendingReport = Ui.sans(this, 13, Ui.TEXT);
         pendingReport.setText(tr("Checking recorded media…", "جاري فحص الوسائط المسجلة…"));
+        pendingReport.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         pendingReport.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 10));
         root.addView(pendingReport);
 
@@ -103,7 +108,8 @@ public final class StorageActivity extends Activity {
                 tr("Remove abandoned pending saves", "حذف عمليات الحفظ المعلقة المهجورة"), false);
         pendingCleanup.setEnabled(false);
         pendingCleanup.setOnClickListener(v -> confirmPendingCleanup());
-        root.addView(pendingCleanup, new LinearLayout.LayoutParams(-1, Ui.dp(this, 54)));
+        pendingCleanup.setMinHeight(Ui.dp(this, 54));
+        root.addView(pendingCleanup, new LinearLayout.LayoutParams(-1, -2));
 
         final TextView note = Ui.sans(this, 12, Ui.MUTED);
         note.setText(tr("NOVA only cleans recognized task cache files older than 24 hours "

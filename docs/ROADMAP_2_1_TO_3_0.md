@@ -78,6 +78,17 @@ Automated regression validation does **not** replace the Android 15/16 physical-
 
 **Goal:** First-class Arabic RTL and English across the whole app.
 
+**Implemented first slice (development, not yet published):**
+- Linked accessible labels to language, format-quality and daily schedule hour selectors.
+- Allowed navigation/settings/storage controls to expand when font sizes grow.
+- Marked shared section headings, announced selected navigation state in both
+  languages and made storage scan results polite accessibility live regions.
+- Added Robolectric checks for English/Arabic selectors, headings and navigation.
+
+**Outstanding:** Audit all inline strings, keyboard navigation, color contrast,
+200% system font scaling, TalkBack focus order, landscape/tablet layouts and
+signed-APK device acceptance. No measured accessibility QA is claimed.
+
 - Move remaining inline `tr(en,ar)` and raw English strings into Android resources with locale/RTL handling. Audit dynamic error states, format labels and notifications.
 - Improve TalkBack labels, focus order, touch targets, color contrast, font scaling, empty/loading states and landscape/tablet layouts.
 - Run accessibility audits and real-device QA in both languages; test text expansion and talkback independently of screenshot snapshots.

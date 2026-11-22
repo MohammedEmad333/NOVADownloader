@@ -2,6 +2,7 @@ package com.example.ytdl;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -37,6 +38,8 @@ final class NovaNavigation {
         view.setText(label);
         view.setGravity(Gravity.CENTER);
         view.setMinHeight(Ui.dp(context, 48));
+        view.setPadding(Ui.dp(context, 5), Ui.dp(context, 10),
+                Ui.dp(context, 5), Ui.dp(context, 10));
         view.setClickable(true);
         view.setFocusable(true);
         view.setContentDescription(label.trim());
@@ -50,23 +53,32 @@ final class NovaNavigation {
         tab.setBackground(Ui.pressable(context, active
                 ? Ui.ACCENT : Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 17));
         tab.setSelected(active);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            tab.setStateDescription(NovaPreferences.text(context,
+                    active ? "Selected" : "Not selected",
+                    active ? "محدد" : "غير محدد"));
+        }
     }
 
     static LinearLayout bar(Context context, TextView explore, TextView transfers,
                             TextView library) {
         final LinearLayout wrap = new LinearLayout(context);
         wrap.setOrientation(LinearLayout.HORIZONTAL);
+        wrap.setLayoutDirection(NovaPreferences.arabic(context)
+                ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         wrap.setGravity(Gravity.CENTER_VERTICAL);
         wrap.setPadding(Ui.dp(context, 15), Ui.dp(context, 11),
                 Ui.dp(context, 15), Ui.dp(context, 12));
         wrap.setBackground(Ui.box(context, Ui.SURFACE, Ui.LINE, 0));
-        final int height = Ui.dp(context, 52);
-        wrap.addView(explore, new LinearLayout.LayoutParams(0, height, 1f));
-        final LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(0, height, 1f);
-        second.leftMargin = Ui.dp(context, 7);
+        for (TextView tab : new TextView[]{explore, transfers, library}) {
+            tab.setMinHeight(Ui.dp(context, 52));
+        }
+        wrap.addView(explore, new LinearLayout.LayoutParams(0, -2, 1f));
+        final LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(0, -2, 1f);
+        second.setMarginStart(Ui.dp(context, 7));
         wrap.addView(transfers, second);
-        final LinearLayout.LayoutParams third = new LinearLayout.LayoutParams(0, height, 1f);
-        third.leftMargin = Ui.dp(context, 7);
+        final LinearLayout.LayoutParams third = new LinearLayout.LayoutParams(0, -2, 1f);
+        third.setMarginStart(Ui.dp(context, 7));
         wrap.addView(library, third);
         return wrap;
     }
