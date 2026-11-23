@@ -113,6 +113,28 @@ public final class NovaAccessibilityTest {
         }
     }
 
+    @Test @Config(sdk = 29)
+    public void android10NavigationAnnouncesSelectionWithoutStateDescription() {
+        final Context context = RuntimeEnvironment.getApplication();
+        final String previous = NovaPreferences.languageChoice(context);
+        try {
+            NovaPreferences.setLanguage(context, "en");
+            final TextView explore = NovaNavigation.tab(context, "Explore", true, v -> {});
+            assertEquals("Explore, Selected",
+                    explore.getContentDescription().toString());
+            NovaNavigation.style(context, explore, false);
+            assertEquals("Explore, Not selected",
+                    explore.getContentDescription().toString());
+
+            NovaPreferences.setLanguage(context, "ar");
+            NovaNavigation.style(context, explore, true);
+            assertEquals("Explore, \u0645\u062d\u062f\u062f",
+                    explore.getContentDescription().toString());
+        } finally {
+            NovaPreferences.setLanguage(context, previous);
+        }
+    }
+
     @Test public void hourlySchedulePickerPreservesSavedMinutePrecision() {
         assertEquals(22 * 60 + 17, SettingsActivity.selectedMinute(22, 22 * 60 + 17));
         assertEquals(7 * 60 + 43, SettingsActivity.selectedMinute(7, 7 * 60 + 43));
