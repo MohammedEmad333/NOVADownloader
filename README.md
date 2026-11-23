@@ -5,6 +5,24 @@
 - Debug APKs and unsigned APKs are for testing only. They are not official releases.
 - A release is published only after the signed APK passes the physical-device acceptance checklist in [docs/RELEASE_2_3_0.md](docs/RELEASE_2_3_0.md).
 
+## NOVA 2.5.0 development: download video from a public link
+
+- Paste an ordinary public web page link or a direct MP4/WebM/MOV video URL into
+  Explore and select **Discover media**. NOVA discovers direct HTML5 video sources
+  from `<video>`, `<source>`, and common Open Graph video metadata.
+- Pick the discovered video format and tap it to queue the download. Transfers
+  use the existing pause/resume, Wi-Fi-only, storage and saved-library pipeline.
+- Share a public video link from Android or use **Paste & preview**.
+- The chosen source index and page link persist for queue recovery. A paused
+  download can re-inspect a public page when a source URL expires.
+- Public-only DNS validation blocks local/private destinations and redirects.
+  Page inspection is bounded and never executes site JavaScript or uses accounts.
+- This supports **direct public video files and simple public HTML5 pages**, not
+  DRM, private/login-only videos, JavaScript-only players, DASH/HLS manifests
+  on generic websites or every social media site.
+- Version 2.5.0 (code 35) is a **development iteration**. Device QA must pass
+  before a public release.
+
 ## NOVA 2.4.0 development: bilingual accessibility
 
 - Android 10 navigation announces selected/unselected tab state through
