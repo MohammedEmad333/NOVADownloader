@@ -128,6 +128,28 @@ remains a release gate.
 - Expand explicit media checksum/integrity verification for locally completed transfers when feasible.
 - **Acceptance:** no unsafe URL handling, no regression in current source fixtures, no silent source/quality substitution.
 
+### 2.6.0 — Public MEGA video link integration (development slice)
+
+**Goal:** Public, individually shared video files download into NOVA without
+requiring a separate app, while never publishing unverified decrypted bytes.
+
+**Implemented in development:**
+- Recognize supported `mega.nz/file/handle#key` and legacy public file shares;
+  reject spoofed, insecure and folder links.
+- Query public metadata, decrypt filename locally and show file size and
+  supported video extension in Explore.
+- Transfer encrypted file chunks using MEGA's byte-segment API and existing
+  queue controls, preserving encrypted partials when downloads pause.
+- Reinspect the share each attempt for fresh transient transfer URLs; decrypt
+  AES-CTR payload on-device and check full-file MEGA meta-MAC before MediaStore
+  publishing. Drop plaintext staging files after verification failures.
+- Add synthetic crypto/MAC, tampering, link/host and metadata regression tests.
+
+**Release checks outstanding:** Validate public files you are permitted to
+download on a real Android 10+ device, including quota failures, multi-chunk
+data, pause/resume, large files, network loss, file playback and update from
+the last public release. No credentials or private folders are supported.
+
 ### 2.6.0 — Build, quality and distribution hardening (P1/P2)
 
 **Goal:** Repeatable and diagnosable builds.
