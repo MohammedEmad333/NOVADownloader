@@ -82,6 +82,7 @@ public class DownloadService extends Service {
     public enum Kind {
         MERGE,    // video-only stream + a chosen audio track, muxed together
         MUXED,    // a progressive stream that already has audio
+        DIRECT,   // an HTTP(S) public video file or HTML5 page source
         AUDIO,    // audio track on its own
         MP3,      // audio encoded to MP3 with metadata / optional cover
         SUBTITLE  // caption file on its own
@@ -126,6 +127,14 @@ public class DownloadService extends Service {
 
         public static Spec muxed(final int height, final String label) {
             return new Spec(Kind.MUXED, height, null, null, 0, label);
+        }
+
+        public static Spec direct(final int videoIndex, final String label) {
+            if (videoIndex < 0 || videoIndex >= 12) {
+                throw new IllegalArgumentException("Invalid public video source index");
+            }
+            // height holds the stable discovered source index for DIRECT only.
+            return new Spec(Kind.DIRECT, videoIndex, null, null, 0, label);
         }
 
         public static Spec audio(final String audioTrackId, final String label) {
@@ -1190,6 +1199,17 @@ public class DownloadService extends Service {
     private void resolve(final Task task) throws Exception {
         task.state = State.RESOLVING;
         update(task);
+
+        if (task.spec.kind == Kind.DIRECT) {
+            final PublicVideoLinks.Result page = PublicVideoLinks.inspect(task.pageUrl);
+            if (task.spec.height >= page.videos.size()) {
+                throw new IOException("Selected public video is no longer available");
+            }
+            final PublicVideoLinks.Video video = page.videos.get(task.spec.height);
+            task.title = Streams.sanitize(page.title);
+            task.preResolve(video.url, null, video.extension, video.mime);
+            return;
+        }
 
         if (TwitterVideo.isPostUrl(task.pageUrl)) {
             final TwitterVideo.Post post = TwitterVideo.fetch(task.pageUrl);
