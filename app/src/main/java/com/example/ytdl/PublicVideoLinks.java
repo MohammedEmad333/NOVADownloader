@@ -41,6 +41,11 @@ final class PublicVideoLinks {
             .dns(new PublicDns()).followRedirects(false)
             .followSslRedirects(false).build();
 
+    // The download pipeline is range-based. Every connection, including redirect
+    // destinations, resolves through the same public-only DNS policy.
+    static final OkHttpClient DOWNLOAD_HTTP = Net.HTTP.newBuilder()
+            .dns(new PublicDns()).build();
+
     static final class Video {
         final String url;
         final String label;
@@ -253,7 +258,11 @@ final class PublicVideoLinks {
                 final String target = response.header("Location");
                 response.close();
                 if (target == null) throw new IOException("Video redirect missing destination");
-                current = safeUrl(new URI(current).resolve(target).toString());
+                try {
+                    current = safeUrl(new URI(current).resolve(target).toString());
+                } catch (java.net.URISyntaxException invalid) {
+                    throw new IOException("Invalid video redirect", invalid);
+                }
             } else {
                 return response;
             }
