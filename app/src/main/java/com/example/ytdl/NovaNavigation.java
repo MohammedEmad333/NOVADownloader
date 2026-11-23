@@ -53,10 +53,17 @@ final class NovaNavigation {
         tab.setBackground(Ui.pressable(context, active
                 ? Ui.ACCENT : Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 17));
         tab.setSelected(active);
+        final String state = NovaPreferences.text(context,
+                active ? "Selected" : "Not selected",
+                active ? "محدد" : "غير محدد");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            tab.setStateDescription(NovaPreferences.text(context,
-                    active ? "Selected" : "Not selected",
-                    active ? "محدد" : "غير محدد"));
+            tab.setStateDescription(state);
+            // Avoid duplicate announcements on Android 11+.
+            tab.setContentDescription(tab.getText().toString().trim());
+        } else {
+            // Android 10 has no View.setStateDescription. Keep the selected
+            // state discoverable to TalkBack without changing the visible label.
+            tab.setContentDescription(tab.getText().toString().trim() + ", " + state);
         }
     }
 

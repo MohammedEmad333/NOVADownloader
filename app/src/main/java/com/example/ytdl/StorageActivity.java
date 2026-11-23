@@ -138,22 +138,21 @@ public final class StorageActivity extends Activity {
             try {
                 final StorageHealth.Report data = StorageHealth.inspect(this);
                 PendingMediaLedger.Scan media = null;
-                String mediaError = null;
                 try {
                     media = PendingMediaLedger.inspect(this);
                 } catch (Exception error) {
-                    mediaError = error.getMessage();
+                    // Exception text can include file paths or content URIs.
+                    // Do not display implementation details in the user-facing report.
                 }
                 final PendingMediaLedger.Scan scan = media;
-                final String problem = mediaError;
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     lockButtons(false);
                     report.setText(format(data));
                     cleanup.setEnabled(data.reclaimableFiles > 0 && !data.workerRunning);
                     if (scan == null) {
-                        pendingReport.setText(tr("Media recovery ledger could not be read: ",
-                                "تعذر قراءة سجل استعادة الوسائط: ") + problem);
+                        pendingReport.setText(tr("Media recovery ledger could not be read.",
+                                "تعذر قراءة سجل استعادة الوسائط."));
                     } else {
                         pendingReport.setText(tr("Recorded pending saves: ", "عمليات الحفظ المسجلة: ")
                                 + scan.tracked + "\n"

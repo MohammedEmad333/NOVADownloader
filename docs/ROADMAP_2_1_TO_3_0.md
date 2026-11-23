@@ -88,6 +88,13 @@ Automated regression validation does **not** replace the Android 15/16 physical-
   languages and made storage scan results polite accessibility live regions.
 - Added Robolectric checks for English/Arabic selectors, headings and navigation.
 
+**Additional development hardening (not yet published):**
+- Android 10 navigation now exposes selected state via content descriptions
+  (Android 11+ retains native state descriptions).
+- Storage scan failures no longer expose exception messages with possible local
+  paths or URIs to the user interface.
+- Added API 29 regression checks for bilingual selected-state announcements.
+
 **Outstanding:** Audit all inline strings, keyboard navigation, color contrast,
 200% system font scaling, TalkBack focus order, landscape/tablet layouts and
 signed-APK device acceptance. No measured accessibility QA is claimed.
