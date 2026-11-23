@@ -48,10 +48,11 @@ final class LinkParser {
             }
         } catch (final Exception ignored) {}
         try {
-            return ServiceList.SoundCloud.getLinkTypeByUrl(value)
-                    != StreamingService.LinkType.NONE;
-        } catch (final Exception ignored) {
-            return false;
-        }
+            if (ServiceList.SoundCloud.getLinkTypeByUrl(value)
+                    != StreamingService.LinkType.NONE) return true;
+        } catch (final Exception ignored) {}
+        // Ordinary public pages and direct video files can also contain
+        // HTML5 video. Discovery and media checks happen in the preview.
+        return PublicVideoLinks.isWebUrl(value);
     }
 }
