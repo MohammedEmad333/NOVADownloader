@@ -1313,7 +1313,8 @@ public class DownloadService extends Service {
                 task.expectedVideoBytes = total;
             }
             report(task, done, total);
-        }, control);
+        }, control, task.spec.kind == Kind.DIRECT
+                ? PublicVideoLinks.DOWNLOAD_HTTP : Net.HTTP);
 
         if (task.spec.kind == Kind.MP3) {
             control.checkpoint();
