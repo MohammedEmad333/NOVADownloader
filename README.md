@@ -7,6 +7,13 @@
 
 ## NOVA 2.4.0 development: bilingual accessibility
 
+- Android 10 navigation announces selected/unselected tab state through
+  content descriptions, while Android 11+ uses state descriptions.
+- Storage recovery errors show localized, non-sensitive messages instead of
+  raw exception details that could expose local file paths or content URIs.
+- Added API 29 Robolectric coverage for navigation state announcements.
+
+
 - Settings language, video-quality and MP3-quality spinners now have explicit
   accessibility-linked labels in Arabic and English.
 - Download schedule start/end hours have separate visible labels and an explicit
