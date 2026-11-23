@@ -364,7 +364,7 @@ public class MainActivity extends Activity {
         urlInput.setBackground(Ui.box(this, Ui.SURFACE_RAISED, Ui.ACCENT_SOFT, 19));
         urlInput.setPadding(Ui.dp(this, 16), Ui.dp(this, 11),
                 Ui.dp(this, 16), Ui.dp(this, 11));
-        root.addView(urlInput, new LinearLayout.LayoutParams(-1, Ui.dp(this, 56)));
+        root.addView(urlInput, new LinearLayout.LayoutParams(-1, -2));
 
         final LinearLayout quick = new LinearLayout(this);
         quick.setOrientation(LinearLayout.HORIZONTAL);
@@ -583,7 +583,8 @@ public class MainActivity extends Activity {
         }
         final String link = LinkParser.firstSupportedMediaLink(value);
         if (link == null) {
-            Toast.makeText(this, "Clipboard doesn't contain a supported media link",
+            Toast.makeText(this, tr("Clipboard has no web video link",
+                            "الحافظة لا تحتوي رابط فيديو ويب"),
                     Toast.LENGTH_SHORT).show();
             return;
         }
@@ -872,6 +873,16 @@ public class MainActivity extends Activity {
                     final List<MediaSearch.Result> snapshot = new ArrayList<>(searchResults);
                     main.post(() -> {
                         if (searchLoadGate.isCurrent(generation)) showSearch(snapshot);
+                    });
+                    return;
+                }
+
+                if (PublicVideoLinks.isGenericLink(input)) {
+                    final PublicVideoLinks.Result direct = PublicVideoLinks.inspect(input);
+                    main.post(() -> {
+                        if (!searchLoadGate.isCurrent(generation)) return;
+                        pageUrl = input;
+                        showPublicVideos(direct);
                     });
                     return;
                 }
@@ -1247,6 +1258,33 @@ public class MainActivity extends Activity {
             });
         });
         dialog.show();
+    }
+
+    private void showPublicVideos(final PublicVideoLinks.Result result) {
+        options.clear();
+        playlist.clear();
+        audioTracks.clear();
+        audioAdapter.clear();
+        audioSpinner.setVisibility(View.GONE);
+        preview.setVisibility(View.GONE);
+        videoTitle = Streams.sanitize(result.title);
+        currentArtist = "";
+        currentCover = "";
+        status.setText(tr("Public video link", "رابط فيديو عام") + "\n"
+                + videoTitle + "\n"
+                + tr("Choose a video format below to download.",
+                        "اختر صيغة الفيديو أدناه لبدء التنزيل."));
+        for (int i = 0; i < result.videos.size(); i++) {
+            final PublicVideoLinks.Video video = result.videos.get(i);
+            final String label = video.label + (result.videos.size() > 1
+                    ? " · " + (i + 1) : "");
+            options.add(new Option(label,
+                    tr("Direct public video · tap to download",
+                            "فيديو عام مباشر · اضغط للتنزيل"),
+                    DownloadService.Spec.direct(i, label), video.url, null,
+                    video.extension, video.mime, null, false));
+        }
+        formatAdapter.notifyDataSetChanged();
     }
 
     private void showTwitterPost(final TwitterVideo.Post post) {
