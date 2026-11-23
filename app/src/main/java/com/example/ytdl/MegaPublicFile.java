@@ -300,7 +300,7 @@ final class MegaPublicFile {
         final byte[] input = new byte[TRANSFER_CHUNK];
         final byte[] chunkState = new byte[16];
         final byte[] macBlock = new byte[16];
-        boolean verified = false;
+        boolean completed = false;
         try (FileInputStream in = new FileInputStream(encrypted);
              FileOutputStream out = new FileOutputStream(plaintext, false)) {
             final Cipher macCipher = Cipher.getInstance("AES/ECB/NoPadding");
@@ -350,13 +350,15 @@ final class MegaPublicFile {
                 computed[i] = (byte) (meta[i] ^ meta[i + 4]);
                 computed[i + 4] = (byte) (meta[i + 8] ^ meta[i + 12]);
             }
-            verified = MessageDigest.isEqual(computed, key.expectedMac);
-            if (!verified) throw new IOException("MEGA file integrity verification failed");
+            if (!MessageDigest.isEqual(computed, key.expectedMac)) {
+                throw new IOException("MEGA file integrity verification failed");
+            }
             control.checkpoint();
+            completed = true;
         } catch (GeneralSecurityException crypto) {
             throw new IOException("Unable to decrypt MEGA file safely", crypto);
         } finally {
-            if (!verified) plaintext.delete();
+            if (!completed) plaintext.delete();
         }
     }
 
