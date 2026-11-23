@@ -11,6 +11,24 @@ final class SourceFeedback {
         final String raw = error == null || error.getMessage() == null ? ""
                 : error.getMessage().toLowerCase(Locale.ROOT);
         final boolean isX = TwitterVideo.isPostUrl(input);
+        final boolean isMega = MegaPublicFile.isMegaUrl(input);
+        if (isMega && (raw.contains("missing its decryption key")
+                || raw.contains("invalid mega") || raw.contains("wrong mega file key"))) {
+            return NovaPreferences.text(context,
+                    "This MEGA link has an invalid or missing file key.",
+                    "مفتاح ملف MEGA مفقود أو غير صالح.");
+        }
+        if (isMega && (raw.contains("quota") || raw.contains("509")
+                || raw.contains("over quota"))) {
+            return NovaPreferences.text(context,
+                    "MEGA transfer quota reached. Try again later.",
+                    "تم بلوغ حد نقل MEGA. حاول لاحقًا.");
+        }
+        if (isMega && (raw.contains("unsupported") || raw.contains("not a supported video"))) {
+            return NovaPreferences.text(context,
+                    "This MEGA link is not a supported public video file.",
+                    "رابط MEGA لا يحتوي ملف فيديو عام مدعوم.");
+        }
         if (raw.contains("429") || raw.contains("rate limit")) {
             return NovaPreferences.text(context,
                     "The public metadata provider is busy. Try again later.",
