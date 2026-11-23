@@ -83,6 +83,7 @@ public class DownloadService extends Service {
         MERGE,    // video-only stream + a chosen audio track, muxed together
         MUXED,    // a progressive stream that already has audio
         DIRECT,   // an HTTP(S) public video file or HTML5 page source
+        MEGA,     // a public MEGA file, decrypt + verify before MediaStore
         AUDIO,    // audio track on its own
         MP3,      // audio encoded to MP3 with metadata / optional cover
         SUBTITLE  // caption file on its own
@@ -135,6 +136,10 @@ public class DownloadService extends Service {
             }
             // height holds the stable discovered source index for DIRECT only.
             return new Spec(Kind.DIRECT, videoIndex, null, null, 0, label);
+        }
+
+        public static Spec mega() {
+            return new Spec(Kind.MEGA, 0, null, null, 0, "MEGA");
         }
 
         public static Spec audio(final String audioTrackId, final String label) {
@@ -1200,6 +1205,14 @@ public class DownloadService extends Service {
         task.state = State.RESOLVING;
         update(task);
 
+        if (task.spec.kind == Kind.MEGA) {
+            final MegaPublicFile.Info file = MegaPublicFile.inspect(task.pageUrl);
+            task.title = file.title;
+            task.preResolve(file.downloadUrl, null, file.extension, file.mime);
+            task.expectedVideoBytes = file.size;
+            return;
+        }
+
         if (task.spec.kind == Kind.DIRECT) {
             final PublicVideoLinks.Result page = PublicVideoLinks.inspect(task.pageUrl);
             if (task.spec.height >= page.videos.size()) {
@@ -1297,6 +1310,10 @@ public class DownloadService extends Service {
     }
 
     private void transfer(final Task task, final Net.Control control) throws Exception {
+        if (task.spec.kind == Kind.MEGA) {
+            transferMega(task, control);
+            return;
+        }
         if (TwitterVideo.isPostUrl(task.pageUrl) && TwitterVideo.isHlsUrl(task.videoUrl)) {
             transferTwitterHls(task, control);
             return;
@@ -1348,6 +1365,41 @@ public class DownloadService extends Service {
             task.outputUri = publish(video, task.title + "." + task.extension,
                     task.mimeType, control).toString();
         }
+    }
+
+    /**
+     * MEGA chunks are encrypted at rest until a complete MAC verification passes.
+     * Re-inspect the public share on every attempt so temporary download URLs
+     * can expire without invalidating the durable queue task.
+     */
+    private void transferMega(final Task task, final Net.Control control) throws Exception {
+        stage(task, State.RESOLVING);
+        final MegaPublicFile.Info info = MegaPublicFile.inspect(task.pageUrl);
+        task.title = info.title;
+        task.extension = info.extension;
+        task.mimeType = info.mime;
+        task.videoUrl = null; // transient MEGA API URL is not a durable share identity
+        task.expectedVideoBytes = info.size;
+
+        final File ciphertext = videoTemp(this, task);
+        final File plaintext = mergedTemp(this, task);
+        if (ciphertext.exists() && ciphertext.length() > info.size) {
+            throw new Net.UnsafeResume("Encrypted MEGA partial is larger than source");
+        }
+        stage(task, State.VIDEO);
+        MegaPublicFile.downloadEncrypted(info.downloadUrl, ciphertext, info.size,
+                (done, total) -> report(task, done, total), control);
+
+        control.checkpoint();
+        task.state = State.CONVERTING;
+        update(task);
+        MegaPublicFile.decryptAndVerify(ciphertext, plaintext, task.pageUrl, info.size, control);
+
+        control.checkpoint();
+        task.state = State.SAVING;
+        update(task);
+        task.outputUri = publish(plaintext, task.title + "." + task.extension,
+                task.mimeType, control).toString();
     }
 
     /** A public X HLS playlist is cached segment-by-segment and remuxed entirely offline. */
