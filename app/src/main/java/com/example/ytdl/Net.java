@@ -134,6 +134,13 @@ public final class Net {
     public static void fetchToFile(final String url, final File dest, final long expectedTotal,
                                    final Progress progress, final Control control)
             throws IOException {
+        fetchToFile(url, dest, expectedTotal, progress, control, HTTP);
+    }
+
+    /** Public-link transfers use an isolated DNS-validated client. */
+    static void fetchToFile(final String url, final File dest, final long expectedTotal,
+                            final Progress progress, final Control control,
+                            final OkHttpClient client) throws IOException {
 
         long written = dest.exists() ? dest.length() : 0;
         long total = -1;
@@ -166,7 +173,7 @@ public final class Net {
                     }
                     final okhttp3.Request request = requestBuilder.build();
 
-                    try (okhttp3.Response response = HTTP.newCall(request).execute()) {
+                    try (okhttp3.Response response = client.newCall(request).execute()) {
                         final int code = response.code();
 
                         // A 416 can mean the partial is already complete, but only if the
