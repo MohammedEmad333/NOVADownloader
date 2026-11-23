@@ -108,6 +108,20 @@ signed-APK device acceptance. No measured accessibility QA is claimed.
 
 **Goal:** Better reliability without bypasses or uncontrolled integration growth.
 
+**Implemented first slice (development, not yet published):**
+- Added public HTTP(S) direct-video and HTML5 page discovery for MP4/WebM/MOV
+  sources, including common Open Graph video metadata and relative media URLs.
+- Enabled public link paste/sharing, video preview/source selection, and durable
+  queue entries using the existing transfer and MediaStore publishing flow.
+- Added URL/redirect validation and public-only DNS for discovered media to
+  avoid fetching local or private-network resources.
+- Added offline HTML fixture, URL safety and queue recovery regression tests.
+
+**Limitations:** Static public HTML5 sources only; no JavaScript execution,
+DRM bypass, private/login media or generic HLS/DASH support. The user must
+have permission to save the content. Physical-device link/source/resume QA
+remains a release gate.
+
 - Separate external source parsing behind validated provider adapters and contract fixtures.
 - Add user-facing metadata provenance/privacy notes for third-party public X APIs; distinguish upstream unavailability from unsupported or private content.
 - Validate optional source/quality labels and stable queuing when source formats change; focus on permitted public links.
