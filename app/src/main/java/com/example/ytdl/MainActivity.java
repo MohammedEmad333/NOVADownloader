@@ -818,6 +818,16 @@ public class MainActivity extends Activity {
         status.setText("Fetching…");
         executor.execute(() -> {
             try {
+                if (MegaPublicFile.isMegaUrl(input)) {
+                    final MegaPublicFile.Info file = MegaPublicFile.inspect(input);
+                    main.post(() -> {
+                        if (!searchLoadGate.isCurrent(generation)) return;
+                        pageUrl = input;
+                        showMegaFile(file);
+                    });
+                    return;
+                }
+
                 if (Spotify.isSpotifyUrl(input)) {
                     final List<Spotify.Match> matches = Spotify.resolveAll(input);
                     if (matches.size() == 1) {
@@ -1258,6 +1268,28 @@ public class MainActivity extends Activity {
             });
         });
         dialog.show();
+    }
+
+    private void showMegaFile(final MegaPublicFile.Info file) {
+        options.clear();
+        playlist.clear();
+        audioTracks.clear();
+        audioAdapter.clear();
+        audioSpinner.setVisibility(View.GONE);
+        preview.setVisibility(View.GONE);
+        videoTitle = file.title;
+        currentArtist = "";
+        currentCover = "";
+        status.setText(tr("MEGA public video", "فيديو MEGA عام")
+                + "\n" + file.name + size(file.size)
+                + "\n" + tr("Tap the file below to download and verify it.",
+                        "اضغط الملف أدناه لتنزيله والتحقق من سلامته."));
+        options.add(new Option(file.extension.toUpperCase(java.util.Locale.ROOT),
+                tr("Encrypted transfer · decrypt and verify on device",
+                        "تنزيل مشفر · فك التشفير والتحقق على الجهاز"),
+                DownloadService.Spec.mega(), null, null,
+                file.extension, file.mime, null, false));
+        formatAdapter.notifyDataSetChanged();
     }
 
     private void showPublicVideos(final PublicVideoLinks.Result result) {

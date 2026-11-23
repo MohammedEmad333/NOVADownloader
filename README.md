@@ -5,6 +5,30 @@
 - Debug APKs and unsigned APKs are for testing only. They are not official releases.
 - A release is published only after the signed APK passes the physical-device acceptance checklist in [docs/RELEASE_2_3_0.md](docs/RELEASE_2_3_0.md).
 
+## NOVA 2.6.0 development: public MEGA video files
+
+- Paste a public `https://mega.nz/file/...` link with its file-key fragment into
+  **Explore**, select **Discover media**, review the filename/size, then choose
+  the video file to queue a download.
+- Supported public single files: MP4, WebM and MOV. Legacy `#!file!key`
+  MEGA links are also recognized.
+- MEGA's public metadata API receives only the public file handle. The share
+  decryption key stays on the device. File attributes and download payload
+  are decrypted locally using AES; the file's MEGA MAC is verified before
+  saving completed media to the Android library.
+- Uses NOVA's existing queue, Wi-Fi-only controls, notifications and
+  pause/resume. A newly generated MEGA download URL is requested on each
+  download attempt so temporary links can expire safely.
+- Transient encrypted partials and the public share link are stored only in
+  app-private storage. The share link includes a secret file key: **do not share
+  it publicly**, and keep device backups protected.
+- Public-only network destinations are required; no MEGA login, account,
+  folders, password-protected content or DRM bypass. Only download files
+  that you have permission to save.
+- Version **2.6.0 (code 36)** is under development. MEGA service behavior and
+  Android device interoperability still require real-file testing. The
+  public release remains the previously published version.
+
 ## NOVA 2.5.0 development: download video from a public link
 
 - Paste an ordinary public web page link or a direct MP4/WebM/MOV video URL into
