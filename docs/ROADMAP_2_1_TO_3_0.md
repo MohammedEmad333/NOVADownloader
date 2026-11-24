@@ -160,6 +160,22 @@ the last public release. No credentials or private folders are supported.
 - Add a privacy-first local diagnostics export that excludes media URLs, identifiers, credentials and file content unless the user explicitly opts in.
 - **Acceptance:** signed-release verification, checksums, certificate continuity, manifest checks, documented rollback and actual device results.
 
+### 2.7.0 — Safe public video-page discovery (development slice)
+
+**Goal:** Improve compatibility with ordinary public HTML5 video pages without executing site code or extracting protected streams.
+
+**Implemented in development:**
+- Discover direct media sources from standard `video` and `source` tags,
+  common lazy-source attributes, preload-video links, Open Graph, Twitter
+  player-stream and itemprop metadata.
+- Display quality/resolution labels when explicitly present in HTML.
+- Reject known adult-content hosts and subdomains from generic page discovery.
+- Add regression tests for supported metadata patterns and restricted hosts.
+
+**Not supported:** JavaScript-only players, login-only/private sources, DRM,
+iframe scraping, HLS/DASH manifests on generic pages or adult-site integrations.
+Physical-device tests remain required before a public release.
+
 ### 3.0.0 — Stable architecture and experience milestone (release gate)
 
 **Goal:** A verified, maintainable release, not a version bump only.
