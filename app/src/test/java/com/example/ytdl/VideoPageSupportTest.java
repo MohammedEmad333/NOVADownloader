@@ -88,6 +88,22 @@ public final class VideoPageSupportTest {
         assertEquals("https://cdn.example.org/720/index.m3u8", variants.get(0).url);
     }
 
+    @Test public void hlsQueueIntentSurvivesSerializationAndProcessRecovery()
+            throws Exception {
+        final DownloadService.Spec spec = DownloadService.Spec.hls();
+        final DownloadService.Task task = new DownloadService.Task(
+                "https://video.example.org/watch/1", "Episode", spec);
+        task.preResolve("https://cdn.example.org/episode/master.m3u8", null,
+                "m3u8", "application/vnd.apple.mpegurl");
+        task.state = DownloadService.State.VIDEO;
+        final DownloadService.Task restored =
+                DownloadService.Task.fromJson(task.toJson());
+        assertEquals(DownloadService.Kind.HLS, restored.spec.kind);
+        assertEquals("https://video.example.org/watch/1", restored.pageUrl);
+        assertEquals("https://cdn.example.org/episode/master.m3u8", restored.videoUrl);
+        assertEquals("m3u8", restored.extension);
+    }
+
     @Test public void serviceRoutingUsesEveryRegisteredNewPipeExtractor() {
         assertFalse(ServiceList.all().isEmpty());
         for (StreamingService service : ServiceList.all()) {
