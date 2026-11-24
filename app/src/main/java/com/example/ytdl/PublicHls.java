@@ -272,6 +272,20 @@ final class PublicHls {
                       Net.Control control) throws IOException {
         control.checkpoint();
         final File output = new File(context.getCacheDir(), "public-hls-" + id + ".mp4");
+        long cachedBytes = 0;
+        final File dir = directory(context, id);
+        final File[] segments = dir.listFiles();
+        if (segments != null) {
+            for (File segment : segments) {
+                if (segment.isFile() && segment.getName().endsWith(".ts")) {
+                    cachedBytes += segment.length();
+                }
+            }
+        }
+        final long available = dir.getUsableSpace();
+        if (available > 0 && available < cachedBytes + STORAGE_RESERVE_BYTES) {
+            throw new IOException("Not enough free storage to remux the completed HLS video");
+        }
         if (output.exists() && !output.delete()) {
             throw new IOException("Cannot replace previous HLS output");
         }
