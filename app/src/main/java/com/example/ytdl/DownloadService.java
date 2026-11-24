@@ -80,6 +80,7 @@ public class DownloadService extends Service {
 
     /** What kind of file was asked for. */
     public enum Kind {
+        HLS,      // a public, unencrypted HLS VOD manifest
         MERGE,    // video-only stream + a chosen audio track, muxed together
         MUXED,    // a progressive stream that already has audio
         DIRECT,   // an HTTP(S) public video file or HTML5 page source
@@ -121,6 +122,10 @@ public class DownloadService extends Service {
 
         // Factories rather than one wide constructor: most fields are meaningless for most
         // kinds, and a call site passing three nulls says nothing about which kind it is.
+        public static Spec hls() {
+            return new Spec(Kind.HLS, 0, null, null, 0, "HLS");
+        }
+
         public static Spec merge(final int height, final String audioTrackId,
                                  final String label) {
             return new Spec(Kind.MERGE, height, audioTrackId, null, 0, label);
@@ -1192,18 +1197,32 @@ public class DownloadService extends Service {
      * are the same question — "what should this be, today?" — which is why the Task carries
      * an intention rather than a pair of URLs.
      */
-    private static StreamingService serviceFor(final String url) {
-        try {
-            if (ServiceList.SoundCloud.getLinkTypeByUrl(url) != StreamingService.LinkType.NONE) {
-                return ServiceList.SoundCloud;
-            }
-        } catch (final Exception ignored) {}
-        return ServiceList.YouTube;
+    private static StreamingService serviceFor(final String url) throws IOException {
+        for (final StreamingService service : ServiceList.all()) {
+            try {
+                if (service.getLinkTypeByUrl(url) != StreamingService.LinkType.NONE) {
+                    return service;
+                }
+            } catch (final Exception ignored) {}
+        }
+        throw new IOException("No supported video-page extractor for this URL");
     }
 
     private void resolve(final Task task) throws Exception {
         task.state = State.RESOLVING;
         update(task);
+
+        if (task.spec.kind == Kind.HLS) {
+            Net.ensureExtractor();
+            final StreamInfo info = StreamInfo.getInfo(serviceFor(task.pageUrl), task.pageUrl);
+            if (info.getHlsUrl() == null || info.getHlsUrl().isEmpty()) {
+                throw new IOException("This page no longer exposes an HLS video");
+            }
+            task.title = Streams.sanitize(info.getName());
+            task.preResolve(info.getHlsUrl(), null, "m3u8",
+                    "application/vnd.apple.mpegurl");
+            return;
+        }
 
         if (task.spec.kind == Kind.MEGA) {
             final MegaPublicFile.Info file = MegaPublicFile.inspect(task.pageUrl);
@@ -1310,6 +1329,10 @@ public class DownloadService extends Service {
     }
 
     private void transfer(final Task task, final Net.Control control) throws Exception {
+        if (task.spec.kind == Kind.HLS || PublicVideoLinks.isManifestUrl(task.videoUrl)) {
+            transferPublicHls(task, control);
+            return;
+        }
         if (task.spec.kind == Kind.MEGA) {
             transferMega(task, control);
             return;
@@ -1372,6 +1395,23 @@ public class DownloadService extends Service {
      * Re-inspect the public share on every attempt so temporary download URLs
      * can expire without invalidating the durable queue task.
      */
+    private void transferPublicHls(final Task task, final Net.Control control) throws Exception {
+        stage(task, State.VIDEO);
+        final File manifest = PublicHls.download(this, task.id, task.videoUrl,
+                (done, total) -> report(task, done, total), control);
+        control.checkpoint();
+        task.state = State.MERGING;
+        update(task);
+        final File output = PublicHls.remux(this, task.id, manifest, control);
+        control.checkpoint();
+        task.state = State.SAVING;
+        task.extension = "mp4";
+        task.mimeType = "video/mp4";
+        update(task);
+        task.outputUri = publish(output, task.title + ".mp4", "video/mp4",
+                control).toString();
+    }
+
     private void transferMega(final Task task, final Net.Control control) throws Exception {
         stage(task, State.RESOLVING);
         final MegaPublicFile.Info info = MegaPublicFile.inspect(task.pageUrl);
@@ -1465,6 +1505,7 @@ public class DownloadService extends Service {
         subtitleTemp(c, t).delete();
         coverTemp(c, t).delete();
         TwitterHls.removeDirectory(c, t.id);
+        PublicHls.removeDirectory(c, t.id);
     }
 
     private void convertSubtitleToSrt(final Task task, final File source,
