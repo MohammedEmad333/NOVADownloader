@@ -23,7 +23,10 @@ public final class PublicVideoLinksTest {
         assertEquals("https://cdn.example.org/video.mp4?token=abc%3D123", mp4.url);
         assertNotNull(PublicVideoLinks.video("https://cdn.example.org/movie.webm",
                 "video/webm"));
-        assertNull(PublicVideoLinks.video("https://cdn.example.org/index.m3u8", null));
+        final PublicVideoLinks.Video hls = PublicVideoLinks.video(
+                "https://cdn.example.org/index.m3u8", null);
+        assertNotNull(hls);
+        assertEquals("m3u8", hls.extension);
         assertNull(PublicVideoLinks.video("https://cdn.example.org/movie.mp4",
                 "text/html"));
         assertNull(PublicVideoLinks.video("javascript:alert(1)", "video/mp4"));
@@ -41,10 +44,11 @@ public final class PublicVideoLinksTest {
                 + "</video></body></html>";
         final PublicVideoLinks.Result result = PublicVideoLinks.parseHtml(page, html);
         assertEquals("My & Friends", result.title);
-        assertEquals(2, result.videos.size());
+        assertEquals(3, result.videos.size());
         assertEquals("https://clips.example.org/clips/a.mp4?quality=720&id=5",
                 result.videos.get(0).url);
         assertEquals("video/webm", result.videos.get(1).mime);
+        assertEquals("m3u8", result.videos.get(2).extension);
     }
 
     @Test public void parsesHtml5VideoWithTypedExtensionlessSource() {
