@@ -235,7 +235,7 @@ final class PublicVideoLinks {
         return new Result(title, videos);
     }
 
-    private static List<String> embeddedPages(String pageUrl, String html) {
+    static List<String> embeddedPages(String pageUrl, String html) {
         final List<String> out = new ArrayList<>();
         final Matcher tags = TAG.matcher(html);
         while (tags.find() && out.size() < 8) {
