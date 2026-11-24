@@ -5,6 +5,20 @@
 - Debug APKs and unsigned APKs are for testing only. They are not official releases.
 - A release is published only after the signed APK passes the physical-device acceptance checklist in [docs/RELEASE_2_3_0.md](docs/RELEASE_2_3_0.md).
 
+## NOVA 2.7.0 development: safer public video-page discovery
+
+- Expand static HTML5 video discovery to common `data-src`,
+  `data-video-src`, `data-original`, preload-video and itemprop metadata.
+- Show available source labels when pages publish quality/resolution metadata;
+  keep MP4, WebM and MOV direct downloads on the existing queue.
+- Explicitly reject known adult-content domains and their subdomains from the
+  generic public-page discovery path. This release does not add adult-site
+  integrations or extractors.
+- Keep page inspection bounded, public-DNS-only, without JavaScript execution,
+  account access, iframe scraping or DRM bypass.
+- Version 2.7.0 (code 37) is a development build. Device testing on permitted,
+  non-adult public HTML5 pages is required before publication.
+
 ## NOVA 2.6.0 development: public MEGA video files
 
 - Paste a public `https://mega.nz/file/...` link with its file-key fragment into
