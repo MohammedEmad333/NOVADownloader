@@ -94,14 +94,15 @@ final class PublicVideoLinks {
         if (!isWebUrl(input) || Spotify.isSpotifyUrl(input) || TwitterVideo.isPostUrl(input)) {
             return false;
         }
-        try {
-            if (org.schabi.newpipe.extractor.ServiceList.YouTube.getLinkTypeByUrl(input)
-                    != org.schabi.newpipe.extractor.StreamingService.LinkType.NONE) return false;
-        } catch (Exception ignored) {}
-        try {
-            if (org.schabi.newpipe.extractor.ServiceList.SoundCloud.getLinkTypeByUrl(input)
-                    != org.schabi.newpipe.extractor.StreamingService.LinkType.NONE) return false;
-        } catch (Exception ignored) {}
+        for (org.schabi.newpipe.extractor.StreamingService service
+                : org.schabi.newpipe.extractor.ServiceList.all()) {
+            try {
+                if (service.getLinkTypeByUrl(input)
+                        != org.schabi.newpipe.extractor.StreamingService.LinkType.NONE) {
+                    return false;
+                }
+            } catch (Exception ignored) {}
+        }
         return true;
     }
 
