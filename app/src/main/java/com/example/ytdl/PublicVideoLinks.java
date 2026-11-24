@@ -158,7 +158,7 @@ final class PublicVideoLinks {
                     resolved.add(candidate);
                 }
             }
-            if (resolved.isEmpty() && depth < MAX_EMBED_DEPTH) {
+            if (depth < MAX_EMBED_DEPTH && resolved.size() < MAX_SOURCES) {
                 for (String embed : embeddedPages(finalUrl, html)) {
                     try {
                         final Result nested = inspect(embed, depth + 1, visited);
@@ -167,12 +167,10 @@ final class PublicVideoLinks {
                                 resolved.add(candidate);
                             }
                         }
-                        if (!resolved.isEmpty()) {
-                            return new Result(parsed.title, resolved);
-                        }
                     } catch (IOException ignored) {
                         // A page can contain analytics, ads and unsupported embeds.
                     }
+                    if (resolved.size() >= MAX_SOURCES) break;
                 }
             }
             if (resolved.isEmpty()) {
