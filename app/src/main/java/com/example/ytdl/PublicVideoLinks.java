@@ -30,7 +30,11 @@ final class PublicVideoLinks {
     private static final int MAX_SOURCES = 12;
     private static final int MAX_REDIRECTS = 4;
     private static final Pattern TAG = Pattern.compile(
-            "<(meta|video|source)\\b[^>]*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+            "<(meta|video|source|iframe|embed)\\b[^>]*>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final Pattern JSON_VIDEO = Pattern.compile(
+            "(?is)[\"'](?:contentUrl|contentURL|videoUrl|videoURL)[\"']\\s*:\\s*[\"']([^\"']+)[\"']");
+    private static final int MAX_EMBED_DEPTH = 2;
     private static final Pattern ATTR = Pattern.compile(
             "([a-zA-Z_:][\\w:.-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))");
     private static final Pattern TITLE = Pattern.compile(
@@ -90,20 +94,27 @@ final class PublicVideoLinks {
         if (!isWebUrl(input) || Spotify.isSpotifyUrl(input) || TwitterVideo.isPostUrl(input)) {
             return false;
         }
-        try {
-            if (org.schabi.newpipe.extractor.ServiceList.YouTube.getLinkTypeByUrl(input)
-                    != org.schabi.newpipe.extractor.StreamingService.LinkType.NONE) return false;
-        } catch (Exception ignored) {}
-        try {
-            if (org.schabi.newpipe.extractor.ServiceList.SoundCloud.getLinkTypeByUrl(input)
-                    != org.schabi.newpipe.extractor.StreamingService.LinkType.NONE) return false;
-        } catch (Exception ignored) {}
+        for (org.schabi.newpipe.extractor.StreamingService service
+                : org.schabi.newpipe.extractor.ServiceList.all()) {
+            try {
+                if (service.getLinkTypeByUrl(input)
+                        != org.schabi.newpipe.extractor.StreamingService.LinkType.NONE) {
+                    return false;
+                }
+            } catch (Exception ignored) {}
+        }
         return true;
     }
 
     static Result inspect(String input) throws IOException {
+        return inspect(input, 0, new LinkedHashSet<>());
+    }
+
+    private static Result inspect(String input, int depth, LinkedHashSet<String> visited)
+            throws IOException {
         if (!isWebUrl(input)) throw new IOException("Enter a valid http(s) media link");
         final String url = safeUrl(input);
+        if (!visited.add(url)) throw new IOException("Repeated embedded video page");
         try (Response response = request(url)) {
             if (!response.isSuccessful() || response.body() == null) {
                 throw new IOException("Public video source is unavailable (HTTP " + response.code() + ")");
@@ -116,6 +127,14 @@ final class PublicVideoLinks {
                 if (direct == null) throw new IOException("Unsupported video type");
                 return new Result(fileTitle(finalUrl), Collections.singletonList(direct));
             }
+            if ("application/vnd.apple.mpegurl".equals(mediaType)
+                    || "application/x-mpegurl".equals(mediaType)
+                    || isManifestUrl(finalUrl)) {
+                final List<Video> variants = PublicHls.variants(finalUrl,
+                        new String(response.body().source().readByteArray(MAX_HTML_BYTES + 1L),
+                                java.nio.charset.StandardCharsets.UTF_8));
+                return new Result(fileTitle(finalUrl), variants);
+            }
             if (!"text/html".equals(mediaType)
                     && !"application/xhtml+xml".equals(mediaType)) {
                 throw new IOException("The link is not a downloadable video or HTML video page");
@@ -126,10 +145,39 @@ final class PublicVideoLinks {
             }
             final String html = new String(data, java.nio.charset.StandardCharsets.UTF_8);
             final Result parsed = parseHtml(finalUrl, html);
-            if (parsed.videos.isEmpty()) {
-                throw new IOException("No direct public HTML5 video found on this page");
+            final List<Video> resolved = new ArrayList<>();
+            final LinkedHashSet<String> seen = new LinkedHashSet<>();
+            for (Video candidate : parsed.videos) {
+                if (candidate.extension.equals("m3u8")) {
+                    for (Video variant : PublicHls.variants(candidate.url)) {
+                        if (seen.add(variant.url) && resolved.size() < MAX_SOURCES) {
+                            resolved.add(variant);
+                        }
+                    }
+                } else if (seen.add(candidate.url) && resolved.size() < MAX_SOURCES) {
+                    resolved.add(candidate);
+                }
             }
-            return parsed;
+            if (depth < MAX_EMBED_DEPTH && resolved.size() < MAX_SOURCES) {
+                for (String embed : embeddedPages(finalUrl, html)) {
+                    try {
+                        final Result nested = inspect(embed, depth + 1, visited);
+                        for (Video candidate : nested.videos) {
+                            if (seen.add(candidate.url) && resolved.size() < MAX_SOURCES) {
+                                resolved.add(candidate);
+                            }
+                        }
+                    } catch (IOException ignored) {
+                        // A page can contain analytics, ads and unsupported embeds.
+                    }
+                    if (resolved.size() >= MAX_SOURCES) break;
+                }
+            }
+            if (resolved.isEmpty()) {
+                throw new IOException("No supported public video source was found. "
+                        + "This page may require JavaScript, login or a protected player.");
+            }
+            return new Result(parsed.title, resolved);
         }
     }
 
@@ -168,12 +216,45 @@ final class PublicVideoLinks {
                 // Relative, malformed, local and non-file sources are not downloadable.
             }
         }
+        final Matcher jsonVideo = JSON_VIDEO.matcher(html);
+        while (jsonVideo.find() && videos.size() < MAX_SOURCES) {
+            try {
+                final String resolved = safeUrl(
+                        new URI(pageUrl).resolve(unescape(jsonVideo.group(1))).toString());
+                final Video video = video(resolved, null);
+                if (video != null && seen.add(video.url)) videos.add(video);
+            } catch (Exception ignored) {}
+        }
         if (title == null || title.isEmpty()) {
             final Matcher match = TITLE.matcher(html);
             title = match.find() ? cleanTitle(match.group(1)) : null;
         }
         if (title == null || title.isEmpty()) title = fileTitle(pageUrl);
         return new Result(title, videos);
+    }
+
+    static List<String> embeddedPages(String pageUrl, String html) {
+        final List<String> out = new ArrayList<>();
+        final Matcher tags = TAG.matcher(html);
+        while (tags.find() && out.size() < 8) {
+            final String kind = tags.group(1).toLowerCase(Locale.ROOT);
+            if (!"iframe".equals(kind) && !"embed".equals(kind)) continue;
+            final String src = attributes(tags.group()).get("src");
+            if (src == null || src.trim().isEmpty()) continue;
+            try {
+                final String resolved = safeUrl(
+                        new URI(pageUrl).resolve(unescape(src)).toString());
+                if (!isManifestUrl(resolved) && !out.contains(resolved)) out.add(resolved);
+            } catch (Exception ignored) {}
+        }
+        return out;
+    }
+
+    static boolean isManifestUrl(String input) {
+        try {
+            final String path = new URI(input).getPath();
+            return path != null && path.toLowerCase(Locale.ROOT).endsWith(".m3u8");
+        } catch (Exception ignored) { return false; }
     }
 
     private static Map<String, String> attributes(String tag) {
@@ -191,6 +272,11 @@ final class PublicVideoLinks {
         if (!isWebUrl(input)) return null;
         final String ext = extensionFor(input);
         final String mime = contentType(declaredMime);
+        if (isManifestUrl(input) || "application/vnd.apple.mpegurl".equals(mime)
+                || "application/x-mpegurl".equals(mime)) {
+            return new Video(input, "HLS · public VOD", "m3u8",
+                    "application/vnd.apple.mpegurl");
+        }
         if (ext == null && !"video/mp4".equals(mime)
                 && !"video/webm".equals(mime) && !"video/quicktime".equals(mime)) {
             return null;

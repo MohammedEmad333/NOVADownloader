@@ -150,6 +150,26 @@ download on a real Android 10+ device, including quota failures, multi-chunk
 data, pause/resume, large files, network loss, file playback and update from
 the last public release. No credentials or private folders are supported.
 
+### 2.7.0 — Video-page extraction and public HLS VOD (development slice)
+
+**Goal:** Accept the watch-page URL and discover the public video source instead
+of requiring the user to locate a direct MP4 link.
+
+**Implemented in development:**
+- Route all registered NewPipe services before generic page parsing.
+- Parse direct HTML5 sources, Open Graph metadata and common JSON-LD content
+  URLs; inspect bounded public iframe/embed pages with recursion and source caps.
+- Discover HLS variants from static page metadata and expose HLS VOD from
+  supported NewPipe extractors.
+- Download unencrypted, completed HLS VOD with bounded segments, private-address
+  DNS protection, local-only FFmpeg remux and resumable per-segment cache.
+- Reject live, encrypted, byte-range/fMP4 HLS and keep DRM/login/JavaScript-only
+  players unsupported. No browser automation or protection bypass is added.
+
+**Release gate:** Full CI plus real Android 10+ testing of direct MP4 pages,
+nested public embeds, NewPipe-supported sites, HLS quality selection, pause/resume,
+network loss, storage exhaustion and playback of completed output.
+
 ### 2.6.0 — Build, quality and distribution hardening (P1/P2)
 
 **Goal:** Repeatable and diagnosable builds.

@@ -5,6 +5,29 @@
 - Debug APKs and unsigned APKs are for testing only. They are not official releases.
 - A release is published only after the signed APK passes the physical-device acceptance checklist in [docs/RELEASE_2_3_0.md](docs/RELEASE_2_3_0.md).
 
+## NOVA 2.7.0 development: video pages and public HLS
+
+- Paste a public watch-page URL in Explore. NOVA checks supported NewPipe
+  extractors first, then bounded static HTML5 metadata and direct media sources.
+- Discover video sources in `<video>`, `<source>`, Open Graph and common
+  JSON-LD video metadata. If the page has no direct source, inspect a small
+  number of public iframe/embed pages with a recursion limit.
+- For supported extractor pages, use the extractor's available HLS VOD URL.
+  For static page metadata, public HLS master variants can be displayed as
+  separate quality choices.
+- Download only unencrypted, completed HLS VOD playlists using bounded segment
+  requests. Segments are stored in app-private cache and remuxed locally; FFmpeg
+  receives only local files, never remote URLs.
+- Existing queue, pause/resume, Wi-Fi-only, storage checks and MediaStore
+  publishing are reused. HLS tasks re-resolve extractor manifests when resumed.
+- Unsupported: live HLS, AES/key-encrypted HLS, byte-range/fMP4 HLS, DASH,
+  DRM, login-only pages, JavaScript-only players and protected streams. These
+  require a supported extractor adapter or a different safe implementation.
+- Public-page inspection is bounded, HTTPS-only for HLS, rejects local/private
+  network destinations and never executes page JavaScript.
+- Version **2.7.0 (code 37)** is a development iteration. Test representative
+  permitted pages on Android 10+ before considering a public release.
+
 ## NOVA 2.6.0 development: public MEGA video files
 
 - Paste a public `https://mega.nz/file/...` link with its file-key fragment into
