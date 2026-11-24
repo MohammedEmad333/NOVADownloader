@@ -30,7 +30,14 @@ final class PublicVideoLinks {
     private static final int MAX_SOURCES = 12;
     private static final int MAX_REDIRECTS = 4;
     private static final Pattern TAG = Pattern.compile(
-            "<(meta|video|source)\\b[^>]*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+            "<(meta|video|source|link)\\b[^>]*>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    private static final String[] RESTRICTED_HOSTS = {
+            "pornhub.com", "pornhub.net", "pornhub.org",
+            "xvideos.com", "xhamster.com", "xnxx.com", "youporn.com",
+            "redtube.com", "tube8.com", "spankbang.com", "eporner.com",
+            "beeg.com", "tnaflix.com", "chaturbate.com", "stripchat.com",
+            "livejasmin.com", "onlyfans.com"
+    };
     private static final Pattern ATTR = Pattern.compile(
             "([a-zA-Z_:][\\w:.-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))");
     private static final Pattern TITLE = Pattern.compile(
@@ -85,6 +92,22 @@ final class PublicVideoLinks {
         }
     }
 
+    /** Adult-content hosts are intentionally excluded from generic video discovery. */
+    static boolean isBlockedHost(String input) {
+        try {
+            final URI uri = new URI(input);
+            final String host = uri.getHost();
+            if (host == null) return false;
+            final String normalized = host.toLowerCase(Locale.ROOT);
+            for (String blocked : RESTRICTED_HOSTS) {
+                if (normalized.equals(blocked) || normalized.endsWith("." + blocked)) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     /** Recognize hosts handled by the existing source-specific extractors first. */
     static boolean isGenericLink(String input) {
         if (!isWebUrl(input) || Spotify.isSpotifyUrl(input) || TwitterVideo.isPostUrl(input)) {
@@ -103,6 +126,7 @@ final class PublicVideoLinks {
 
     static Result inspect(String input) throws IOException {
         if (!isWebUrl(input)) throw new IOException("Enter a valid http(s) media link");
+        if (isBlockedHost(input)) throw new IOException("This video host is not supported");
         final String url = safeUrl(input);
         try (Response response = request(url)) {
             if (!response.isSuccessful() || response.body() == null) {
@@ -145,7 +169,8 @@ final class PublicVideoLinks {
             String src = null;
             if ("meta".equals(type)) {
                 final String property = attrs.containsKey("property")
-                        ? attrs.get("property") : attrs.get("name");
+                        ? attrs.get("property") : attrs.containsKey("name")
+                        ? attrs.get("name") : attrs.get("itemprop");
                 if (property == null) continue;
                 final String key = property.toLowerCase(Locale.ROOT);
                 if ("og:title".equals(key) && title == null) {
@@ -156,14 +181,24 @@ final class PublicVideoLinks {
                         || "twitter:player:stream".equals(key)) {
                     src = attrs.get("content");
                 }
+            } else if ("link".equals(type)) {
+                final String rel = attrs.get("rel");
+                final String as = attrs.get("as");
+                if (rel != null && rel.toLowerCase(Locale.ROOT).contains("preload")
+                        && as != null && "video".equalsIgnoreCase(as)) {
+                    src = attrs.get("href");
+                }
             } else {
-                src = attrs.get("src");
+                src = first(attrs, "src", "data-src", "data-video-src", "data-original");
             }
             if (src == null) continue;
             try {
                 final String resolved = safeUrl(new URI(pageUrl).resolve(unescape(src)).toString());
-                final Video video = video(resolved, attrs.get("type"));
-                if (video != null && seen.add(video.url)) videos.add(video);
+                final Video found = video(resolved, attrs.get("type"));
+                if (found != null && seen.add(found.url)) {
+                    videos.add(new Video(found.url, sourceLabel(found.extension, attrs),
+                            found.extension, found.mime));
+                }
             } catch (Exception ignored) {
                 // Relative, malformed, local and non-file sources are not downloadable.
             }
@@ -174,6 +209,34 @@ final class PublicVideoLinks {
         }
         if (title == null || title.isEmpty()) title = fileTitle(pageUrl);
         return new Result(title, videos);
+    }
+
+    private static String first(Map<String, String> attrs, String... keys) {
+        for (String key : keys) {
+            final String value = attrs.get(key);
+            if (value != null && !value.trim().isEmpty()) return value.trim();
+        }
+        return null;
+    }
+
+    private static String sourceLabel(String extension, Map<String, String> attrs) {
+        String quality = first(attrs, "data-quality", "quality", "label", "res");
+        if (quality == null) {
+            final String height = first(attrs, "data-height", "height");
+            if (height != null && height.matches("[0-9]{3,4}")) quality = height + "p";
+        }
+        if (quality != null) {
+            quality = quality.trim();
+            if (quality.matches("[0-9]{3,4}")) quality += "p";
+            if (!quality.toLowerCase(Locale.ROOT).contains("p")
+                    && !quality.toLowerCase(Locale.ROOT).contains("hd")) {
+                quality = quality + " · " + extension.toUpperCase(Locale.ROOT);
+            } else {
+                quality = quality + " · " + extension.toUpperCase(Locale.ROOT);
+            }
+            return quality;
+        }
+        return extension.toUpperCase(Locale.ROOT);
     }
 
     private static Map<String, String> attributes(String tag) {
@@ -188,7 +251,7 @@ final class PublicVideoLinks {
     }
 
     static Video video(String input, String declaredMime) {
-        if (!isWebUrl(input)) return null;
+        if (!isWebUrl(input) || isBlockedHost(input)) return null;
         final String ext = extensionFor(input);
         final String mime = contentType(declaredMime);
         if (ext == null && !"video/mp4".equals(mime)
@@ -273,7 +336,7 @@ final class PublicVideoLinks {
     private static String safeUrl(String input) throws IOException {
         try {
             final URI uri = new URI(input);
-            if (!isWebUrl(input) || uri.getRawFragment() != null
+            if (!isWebUrl(input) || isBlockedHost(input) || uri.getRawFragment() != null
                     || uri.getHost().length() > 253 || uri.getPort() > 65535
                     || uri.getPort() == 0) throw new IOException("Invalid public video URL");
             final String host = uri.getHost().toLowerCase(Locale.ROOT);
