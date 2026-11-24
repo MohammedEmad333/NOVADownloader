@@ -906,7 +906,7 @@ public class MainActivity extends Activity {
                 main.post(() -> {
                     if (!searchLoadGate.isCurrent(generation)) return;
                     pageUrl = input;
-                    showMedia(info, service == ServiceList.SoundCloud ? "SoundCloud" : "YouTube");
+                    showMedia(info, service.getServiceInfo().getName());
                 });
             } catch (final Exception e) {
                 main.post(() -> {
@@ -961,12 +961,14 @@ public class MainActivity extends Activity {
     }
 
     private static StreamingService serviceFor(final String url) {
-        try {
-            if (ServiceList.SoundCloud.getLinkTypeByUrl(url) != StreamingService.LinkType.NONE) {
-                return ServiceList.SoundCloud;
-            }
-        } catch (final Exception ignored) {}
-        return ServiceList.YouTube;
+        for (final StreamingService service : ServiceList.all()) {
+            try {
+                if (service.getLinkTypeByUrl(url) != StreamingService.LinkType.NONE) {
+                    return service;
+                }
+            } catch (final Exception ignored) {}
+        }
+        throw new IllegalArgumentException("No supported video-page extractor for this URL");
     }
 
     private static StreamingService.LinkType linkType(final StreamingService service, final String url) {
