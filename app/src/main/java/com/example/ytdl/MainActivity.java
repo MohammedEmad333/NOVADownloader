@@ -1379,6 +1379,15 @@ public class MainActivity extends Activity {
         audioSpinner.setVisibility(audioTracks.isEmpty() ? View.GONE : View.VISIBLE);
         if (!audioTracks.isEmpty()) audioSpinner.setSelection(0);
 
+        final String hlsUrl = info.getHlsUrl();
+        if (hlsUrl != null && !hlsUrl.trim().isEmpty()) {
+            options.add(new Option("HLS · Auto quality",
+                    tr("Public VOD · download and remux",
+                            "بث عام مسجل · تنزيل وتجميع"),
+                    DownloadService.Spec.hls(), hlsUrl, null,
+                    "m3u8", "application/vnd.apple.mpegurl", null, false));
+        }
+
         final long duration = info.getDuration();
         final StringBuilder header = new StringBuilder(source).append("\n")
                 .append(sourceTitle);
