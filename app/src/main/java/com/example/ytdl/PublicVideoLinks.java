@@ -35,13 +35,6 @@ final class PublicVideoLinks {
     private static final Pattern JSON_VIDEO = Pattern.compile(
             "(?is)[\"'](?:contentUrl|contentURL|videoUrl|videoURL)[\"']\\s*:\\s*[\"']([^\"']+)[\"']");
     private static final int MAX_EMBED_DEPTH = 2;
-    private static final String[] RESTRICTED_HOSTS = {
-            "pornhub.com", "pornhub.net", "pornhub.org",
-            "xvideos.com", "xhamster.com", "xnxx.com", "youporn.com",
-            "redtube.com", "tube8.com", "spankbang.com", "eporner.com",
-            "beeg.com", "tnaflix.com", "chaturbate.com", "stripchat.com",
-            "livejasmin.com", "onlyfans.com"
-    };
     private static final Pattern ATTR = Pattern.compile(
             "([a-zA-Z_:][\\w:.-]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))");
     private static final Pattern TITLE = Pattern.compile(
@@ -96,25 +89,9 @@ final class PublicVideoLinks {
         }
     }
 
-    /** Known restricted hosts are excluded from generic and extractor discovery. */
-    static boolean isBlockedHost(String input) {
-        try {
-            final URI uri = new URI(input);
-            String host = uri.getHost();
-            if (host == null) return false;
-            host = host.toLowerCase(Locale.ROOT);
-            while (host.endsWith(".")) host = host.substring(0, host.length() - 1);
-            for (String blocked : RESTRICTED_HOSTS) {
-                if (host.equals(blocked) || host.endsWith("." + blocked)) return true;
-            }
-        } catch (Exception ignored) {}
-        return false;
-    }
-
     /** Recognize hosts handled by the existing source-specific extractors first. */
     static boolean isGenericLink(String input) {
-        if (!isWebUrl(input) || isBlockedHost(input)
-                || Spotify.isSpotifyUrl(input) || TwitterVideo.isPostUrl(input)) {
+        if (!isWebUrl(input) || Spotify.isSpotifyUrl(input) || TwitterVideo.isPostUrl(input)) {
             return false;
         }
         for (org.schabi.newpipe.extractor.StreamingService service
@@ -136,7 +113,6 @@ final class PublicVideoLinks {
     private static Result inspect(String input, int depth, LinkedHashSet<String> visited)
             throws IOException {
         if (!isWebUrl(input)) throw new IOException("Enter a valid http(s) media link");
-        if (isBlockedHost(input)) throw new IOException("This video host is not supported");
         final String url = safeUrl(input);
         if (!visited.add(url)) throw new IOException("Repeated embedded video page");
         try (Response response = request(url)) {
@@ -327,7 +303,7 @@ final class PublicVideoLinks {
     }
 
     static Video video(String input, String declaredMime) {
-        if (!isWebUrl(input) || isBlockedHost(input)) return null;
+        if (!isWebUrl(input)) return null;
         final String ext = extensionFor(input);
         final String mime = contentType(declaredMime);
         if (isManifestUrl(input) || "application/vnd.apple.mpegurl".equals(mime)
@@ -417,7 +393,7 @@ final class PublicVideoLinks {
     private static String safeUrl(String input) throws IOException {
         try {
             final URI uri = new URI(input);
-            if (!isWebUrl(input) || isBlockedHost(input) || uri.getRawFragment() != null
+            if (!isWebUrl(input) || uri.getRawFragment() != null
                     || uri.getHost().length() > 253 || uri.getPort() > 65535
                     || uri.getPort() == 0) throw new IOException("Invalid public video URL");
             final String host = uri.getHost().toLowerCase(Locale.ROOT);

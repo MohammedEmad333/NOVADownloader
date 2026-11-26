@@ -1198,9 +1198,6 @@ public class DownloadService extends Service {
      * an intention rather than a pair of URLs.
      */
     private static StreamingService serviceFor(final String url) throws IOException {
-        if (PublicVideoLinks.isBlockedHost(url)) {
-            throw new IOException("This video host is not supported");
-        }
         for (final StreamingService service : ServiceList.all()) {
             try {
                 if (service.getLinkTypeByUrl(url) != StreamingService.LinkType.NONE) {

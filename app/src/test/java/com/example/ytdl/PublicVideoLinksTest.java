@@ -14,25 +14,6 @@ import static org.junit.Assert.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34)
 public final class PublicVideoLinksTest {
-    @Test public void rejectsRestrictedHostsAndSubdomainsBeforeDiscovery() {
-        for (String url : new String[]{
-                "https://www.pornhub.com/view_video.php?viewkey=example",
-                "https://pornhub.com/video.mp4",
-                "https://sub.xvideos.com/watch/1",
-                "https://xhamster.com/video/1",
-                "https://xnxx.com/video/1",
-                "https://onlyfans.com/user/post/1"}) {
-            assertTrue(url, PublicVideoLinks.isBlockedHost(url));
-            assertNull(PublicVideoLinks.video(url, "video/mp4"));
-        }
-        assertFalse(PublicVideoLinks.isBlockedHost("https://example.org/video.mp4"));
-        assertFalse(PublicVideoLinks.isBlockedHost("https://notpornhub.com/video.mp4"));
-        assertFalse(PublicVideoLinks.isGenericLink("https://www.pornhub.com/watch/1"));
-        assertTrue(PublicVideoLinks.parseHtml("https://example.org/page",
-                "<video src='https://sub.xvideos.com/video.mp4'></video>")
-                .videos.isEmpty());
-    }
-
     @Test public void discoversLazySourcesPreloadAndExplicitQualityLabels() {
         final PublicVideoLinks.Result result = PublicVideoLinks.parseHtml(
                 "https://media.example.org/watch/one",
