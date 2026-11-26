@@ -159,6 +159,10 @@ of requiring the user to locate a direct MP4 link.
 - Route all registered NewPipe services before generic page parsing.
 - Parse direct HTML5 sources, Open Graph metadata and common JSON-LD content
   URLs; inspect bounded public iframe/embed pages with recursion and source caps.
+- Also discover common lazy-source attributes, video preload links and schema
+  `itemprop=contentUrl` metadata; show quality labels only when explicitly published.
+- Reject known restricted hostnames and their subdomains before extractor or
+  generic page discovery.
 - Discover HLS variants from static page metadata and expose HLS VOD from
   supported NewPipe extractors.
 - Download unencrypted, completed HLS VOD with bounded segments, private-address

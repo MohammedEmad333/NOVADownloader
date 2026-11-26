@@ -12,6 +12,10 @@
 - Discover video sources in `<video>`, `<source>`, Open Graph and common
   JSON-LD video metadata. If the page has no direct source, inspect a small
   number of public iframe/embed pages with a recursion limit.
+- Also recognize common lazy-source attributes, video preload links, schema
+  `itemprop=contentUrl` metadata and explicitly published quality labels.
+- Reject known restricted hostnames and their subdomains before generic page
+  parsing or registered-site extractor routing.
 - For supported extractor pages, use the extractor's available HLS VOD URL.
   For static page metadata, public HLS master variants can be displayed as
   separate quality choices.

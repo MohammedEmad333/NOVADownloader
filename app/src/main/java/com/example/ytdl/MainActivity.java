@@ -961,6 +961,9 @@ public class MainActivity extends Activity {
     }
 
     private static StreamingService serviceFor(final String url) {
+        if (PublicVideoLinks.isBlockedHost(url)) {
+            throw new IllegalArgumentException("This video host is not supported");
+        }
         for (final StreamingService service : ServiceList.all()) {
             try {
                 if (service.getLinkTypeByUrl(url) != StreamingService.LinkType.NONE) {
