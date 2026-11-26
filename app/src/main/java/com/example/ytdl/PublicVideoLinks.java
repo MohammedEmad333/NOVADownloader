@@ -30,7 +30,7 @@ final class PublicVideoLinks {
     private static final int MAX_SOURCES = 12;
     private static final int MAX_REDIRECTS = 4;
     private static final Pattern TAG = Pattern.compile(
-            "<(meta|video|source|iframe|embed)\\b[^>]*>",
+            "<(meta|video|source|iframe|embed|link)\\b[^>]*>",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern JSON_VIDEO = Pattern.compile(
             "(?is)[\"'](?:contentUrl|contentURL|videoUrl|videoURL)[\"']\\s*:\\s*[\"']([^\"']+)[\"']");
@@ -193,7 +193,8 @@ final class PublicVideoLinks {
             String src = null;
             if ("meta".equals(type)) {
                 final String property = attrs.containsKey("property")
-                        ? attrs.get("property") : attrs.get("name");
+                        ? attrs.get("property") : attrs.containsKey("name")
+                        ? attrs.get("name") : attrs.get("itemprop");
                 if (property == null) continue;
                 final String key = property.toLowerCase(Locale.ROOT);
                 if ("og:title".equals(key) && title == null) {
@@ -201,17 +202,28 @@ final class PublicVideoLinks {
                 }
                 if ("og:video".equals(key) || "og:video:url".equals(key)
                         || "og:video:secure_url".equals(key)
-                        || "twitter:player:stream".equals(key)) {
+                        || "twitter:player:stream".equals(key)
+                        || "contenturl".equals(key)) {
                     src = attrs.get("content");
                 }
+            } else if ("link".equals(type)) {
+                final String rel = attrs.get("rel");
+                final String as = attrs.get("as");
+                if (rel != null && rel.toLowerCase(Locale.ROOT).contains("preload")
+                        && "video".equalsIgnoreCase(as)) {
+                    src = attrs.get("href");
+                }
             } else {
-                src = attrs.get("src");
+                src = first(attrs, "src", "data-src", "data-video-src", "data-original");
             }
             if (src == null) continue;
             try {
                 final String resolved = safeUrl(new URI(pageUrl).resolve(unescape(src)).toString());
                 final Video video = video(resolved, attrs.get("type"));
-                if (video != null && seen.add(video.url)) videos.add(video);
+                if (video != null && seen.add(video.url)) {
+                    videos.add(new Video(video.url, sourceLabel(video, attrs),
+                            video.extension, video.mime));
+                }
             } catch (Exception ignored) {
                 // Relative, malformed, local and non-file sources are not downloadable.
             }
@@ -231,6 +243,28 @@ final class PublicVideoLinks {
         }
         if (title == null || title.isEmpty()) title = fileTitle(pageUrl);
         return new Result(title, videos);
+    }
+
+    private static String first(Map<String, String> attrs, String... keys) {
+        for (String key : keys) {
+            final String value = attrs.get(key);
+            if (value != null && !value.trim().isEmpty()) return value.trim();
+        }
+        return null;
+    }
+
+    private static String sourceLabel(Video video, Map<String, String> attrs) {
+        String quality = first(attrs, "data-quality", "quality", "label", "res");
+        if (quality == null) {
+            final String height = first(attrs, "data-height", "height");
+            if (height != null && height.matches("[0-9]{3,4}")) quality = height + "p";
+        }
+        if (quality == null) return video.label;
+        quality = quality.replaceAll("[\\p{Cntrl}]", " ").trim();
+        if (quality.isEmpty()) return video.label;
+        if (quality.length() > 24) quality = quality.substring(0, 24).trim();
+        if (quality.matches("[0-9]{3,4}")) quality += "p";
+        return quality + " · " + video.extension.toUpperCase(Locale.ROOT);
     }
 
     static List<String> embeddedPages(String pageUrl, String html) {

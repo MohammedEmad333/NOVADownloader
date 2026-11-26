@@ -14,6 +14,30 @@ import static org.junit.Assert.*;
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34)
 public final class PublicVideoLinksTest {
+    @Test public void discoversLazySourcesPreloadAndExplicitQualityLabels() {
+        final PublicVideoLinks.Result result = PublicVideoLinks.parseHtml(
+                "https://media.example.org/watch/one",
+                "<title>Public demo</title>"
+                + "<video data-src='/video/demo.mp4' data-quality='1080'>"
+                + "<source data-video-src='/video/demo.webm' type='video/webm' data-height='720'>"
+                + "</video>"
+                + "<link rel='preload' as='video' href='/video/preview.mp4'>");
+        assertEquals(3, result.videos.size());
+        assertEquals("1080p · MP4", result.videos.get(0).label);
+        assertEquals("720p · WEBM", result.videos.get(1).label);
+        assertEquals("https://media.example.org/video/preview.mp4",
+                result.videos.get(2).url);
+    }
+
+    @Test public void discoversSchemaContentUrlMetadata() {
+        final PublicVideoLinks.Result result = PublicVideoLinks.parseHtml(
+                "https://media.example.org/watch/one",
+                "<meta itemprop='contentUrl' content='/video/schema.mp4'>");
+        assertEquals(1, result.videos.size());
+        assertEquals("https://media.example.org/video/schema.mp4",
+                result.videos.get(0).url);
+    }
+
     @Test public void directVideoLinksSupportQueryParametersAndMimeTypes() {
         final PublicVideoLinks.Video mp4 = PublicVideoLinks.video(
                 "https://cdn.example.org/video.mp4?token=abc%3D123", null);
